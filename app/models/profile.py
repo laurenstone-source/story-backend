@@ -1,7 +1,10 @@
+import uuid
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.types import Date
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
+
 from app.database import Base
 
 
@@ -10,20 +13,22 @@ class Profile(Base):
 
     id = Column(String, primary_key=True, index=True)
 
-    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
+    # ✅ FIX: Must match users.id UUID type
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        unique=True,
+        nullable=False
+    )
 
     full_name = Column(String, nullable=True)
 
-    # Short biography
     bio = Column(String, nullable=True)
-
-    # ⭐ NEW — long biography (uses Text for large content)
     long_biography = Column(Text, nullable=True)
 
     is_public = Column(Boolean, default=True)
-
     is_searchable = Column(Boolean, default=True)
-     
+
     next_of_kin_name = Column(String, nullable=True)
     next_of_kin_email = Column(String, nullable=True, index=True)
 
@@ -33,11 +38,17 @@ class Profile(Base):
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Media selectors
-    profile_picture_media_id = Column(Integer, ForeignKey("media_files.id"), nullable=True)
-    profile_video_media_id = Column(Integer, ForeignKey("media_files.id"), nullable=True)
+    profile_picture_media_id = Column(
+        Integer,
+        ForeignKey("media_files.id"),
+        nullable=True
+    )
+    profile_video_media_id = Column(
+        Integer,
+        ForeignKey("media_files.id"),
+        nullable=True
+    )
 
-    # Profile-level voice note
     voice_note_path = Column(String, nullable=True)
 
     # -------------------------------------------------------
@@ -46,14 +57,12 @@ class Profile(Base):
 
     user = relationship("User", back_populates="profile", foreign_keys=[user_id])
 
-    
     events = relationship(
         "TimelineEvent",
         back_populates="profile",
         cascade="all, delete-orphan"
     )
 
-    
     media_files = relationship(
         "MediaFile",
         back_populates="profile",
