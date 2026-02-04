@@ -43,7 +43,7 @@ class Settings:
     # -------------------------------------------------------
     BASE_URL: str = os.getenv(
         "BASE_URL",
-        "BASE_URL: str = os.getenv(
+        BASE_URL: str = os.getenv(
     "BASE_URL",
     "http://127.0.0.1:8000"
     )
