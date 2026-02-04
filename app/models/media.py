@@ -1,6 +1,10 @@
+import uuid
+from datetime import datetime
+
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.database import Base
 
 
@@ -8,7 +12,14 @@ class MediaFile(Base):
     __tablename__ = "media_files"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    # ✅ FIX: user_id must match users.id (UUID)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
 
     # Used by timeline event main image
     event_id = Column(
@@ -42,10 +53,8 @@ class MediaFile(Base):
 
     duration_seconds = Column(Integer, nullable=True)
 
-    # ✅ Ownership stays forever
     original_scope = Column(String, nullable=False, default="gallery")
 
-    # ✅ NEW: Track where this came from
     original_media_id = Column(
         Integer,
         ForeignKey("media_files.id"),
@@ -74,7 +83,6 @@ class MediaFile(Base):
         passive_deletes=True,
     )
 
-    # ✅ Link back to original source
     original_media = relationship(
         "MediaFile",
         remote_side=[id],
