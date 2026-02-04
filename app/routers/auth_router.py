@@ -31,11 +31,14 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
 class ChangeEmailRequest(BaseModel):
     email: EmailStr
 
+
 class ChangePasswordRequest(BaseModel):
     password: str
+
 
 # ----------------- REGISTER ------------------
 
@@ -70,7 +73,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
         return {
             "message": "Registration successful",
-            "user_id": user.id,
+            "user_id": str(user.id),   # ✅ convert UUID to string
             "profile_id": profile.id,
         }
 
@@ -90,13 +93,16 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="Incorrect email or password",
         )
 
-    token = create_access_token({"sub": user.id})
+    # ✅ FIX: JWT cannot store UUID directly
+    token = create_access_token({"sub": str(user.id)})
 
     return {
         "access_token": token,
         "token_type": "bearer",
     }
-# --------------------Change email---------------------
+
+
+# -------------------- CHANGE EMAIL ---------------------
 
 @router.post("/change-email")
 def change_email(
@@ -122,7 +128,9 @@ def change_email(
 
     return {"message": "Email updated"}
 
-# --------------------Change Password---------------------
+
+# -------------------- CHANGE PASSWORD ---------------------
+
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
@@ -141,7 +149,10 @@ def change_password(
     current_user.hashed_password = hash_password(payload.password)
     db.commit()
 
-    return {"message": "Password updated"}# -------------------- ME ---------------------
+    return {"message": "Password updated"}
+
+
+# -------------------- ME ---------------------
 
 @router.get("/me")
 def get_me(
@@ -155,7 +166,7 @@ def get_me(
     )
 
     return {
-        "id": current_user.id,
+        "id": str(current_user.id),   # ✅ convert UUID to string
         "email": current_user.email,
         "has_profile": profile is not None
     }

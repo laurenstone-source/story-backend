@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from uuid import uuid4
+from uuid import uuid4, UUID
 
 from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
@@ -13,12 +13,12 @@ from app.models.user import User
 
 
 # ============================================================
-# JWT CONFIG  (moved constants here - fixes circular import)
+# JWT CONFIG
 # ============================================================
 
-SECRET_KEY = "super-secret-key-change-in-prod"   # <-- update for production
+SECRET_KEY = "super-secret-key-change-in-prod"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days valid token
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -48,7 +48,7 @@ def register_user(db: Session, email: str, password: str) -> User:
         raise ValueError("Email already exists")
 
     user = User(
-        id=str(uuid4()),
+        id=uuid4(),   # ✅ UUID object (NOT string)
         email=email,
         hashed_password=hash_password(password),
     )
@@ -67,8 +67,10 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     user = db.query(User).filter(User.email == email).first()
     if not user:
         return None
+
     if not verify_password(password, user.hashed_password):
         return None
+
     return user
 
 
@@ -78,15 +80,15 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
 
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 # ============================================================
-# GET CURRENT USER (works even after DB wipe)
+# GET CURRENT USER
 # ============================================================
 
 def get_current_user(
@@ -96,18 +98,19 @@ def get_current_user(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        user_id = payload.get("sub")
 
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+
+        # ✅ Convert string back into UUID for DB lookup
+        user_id = UUID(user_id)
 
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
 
-    # IMPORTANT FIX:
-    # If DB was wiped, token is invalid → return 401 instead of crashing
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 

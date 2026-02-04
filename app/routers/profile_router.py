@@ -166,18 +166,34 @@ def get_my_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
+    profile = db.query(Profile).filter(
+        Profile.user_id == current_user.id
+    ).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile does not exist")
+        raise HTTPException(
+            status_code=404,
+            detail="Profile does not exist"
+        )
 
     urls = attach_media_urls(db, profile)
-    return {**profile.__dict__, **urls}
+
+    data = {
+        **profile.__dict__,
+        **urls,
+    }
+
+    # ✅ Convert UUID fields (if still needed)
+    data["id"] = str(profile.id)
+    data["user_id"] = str(profile.user_id)
+
+    return data
+
+
 # ---------------------------------------------------------------------
 # CREATE PROFILE
 # ---------------------------------------------------------------------
 @router.post("/", response_model=ProfileOut)
-@router.post("", response_model=ProfileOut)
 def create_profile(
     payload: ProfileCreate,
     db: Session = Depends(get_db),
@@ -191,7 +207,7 @@ def create_profile(
         raise HTTPException(status_code=400, detail="Profile already exists")
 
     new_profile = Profile(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),              # ✅ FIXED
         user_id=current_user.id,
         full_name=payload.full_name,
         bio=payload.bio,
@@ -207,7 +223,10 @@ def create_profile(
     db.refresh(new_profile)
 
     urls = attach_media_urls(db, new_profile)
+
     return {**new_profile.__dict__, **urls}
+
+
 
 
 # ---------------------------------------------------------------------
@@ -234,7 +253,14 @@ def update_my_profile(
     db.refresh(profile)
 
     urls = attach_media_urls(db, profile)
-    return {**profile.__dict__, **urls}
+
+    data = {**profile.__dict__, **urls}
+    data["id"] = str(profile.id)
+    data["user_id"] = str(profile.user_id)
+
+    return data
+
+
 
 
 # ---------------------------------------------------------------------
@@ -805,8 +831,8 @@ def get_profile_by_id(
     # ----------------------------------------
     if not allowed:
         return ProfileOutLimited(
-            id=profile.id,
-            user_id=profile.user_id,
+            id=str(profile.id),
+            user_id=str(profile.user_id),
             full_name=profile.full_name,
             bio=profile.bio,
             long_biography=None,      # hide full biography
