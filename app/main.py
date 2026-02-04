@@ -61,6 +61,7 @@ def ensure_media_folders():
 
     for folder in folders:
         os.makedirs(folder, exist_ok=True)
+ensure_media_folders()
 
 # -----------------------
 # CREATE APP
