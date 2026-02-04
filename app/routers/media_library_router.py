@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+# app/routers/media_library_router.py
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -12,25 +14,30 @@ from app.models.event_gallery import EventGallery
 
 from app.schemas.media_library_schema import MediaLibraryItemOut
 from app.utils.urls import absolute_media_url
-from app.storage import delete_file
 
 router = APIRouter(prefix="/media-library", tags=["Media Library"])
 
 
-def _abs(p: str | None) -> str | None:
-    if not p:
+# ==========================================================
+# Helpers
+# ==========================================================
+
+def _abs(path: str | None) -> str | None:
+    """
+    Convert stored Supabase/local path into full absolute URL.
+    """
+    if not path:
         return None
-    # p might already be "/media/..." or "media/users/..."
-    return absolute_media_url(p)
+    return absolute_media_url(path)
 
 
-def _safe_name(v: str | None, fallback: str) -> str:
-    cleaned = (v or "").strip()
+def _safe_name(value: str | None, fallback: str) -> str:
+    cleaned = (value or "").strip()
     return cleaned if cleaned else fallback
 
 
 # ==========================================================
-# GET FULL MEDIA LIBRARY (All user media + voice notes)
+# GET FULL MEDIA LIBRARY
 # ==========================================================
 @router.get("/library", response_model=list[MediaLibraryItemOut])
 def get_media_library(
@@ -39,9 +46,9 @@ def get_media_library(
 ):
     results: list[dict] = []
 
-    # ----------------------------------------------------------
-    # 1) MediaFile entries (images/videos + media-level voice notes)
-    # ----------------------------------------------------------
+    # ======================================================
+    # 1) MediaFile items (images/videos + voice notes)
+    # ======================================================
     media_items = (
         db.query(MediaFile)
         .filter(MediaFile.user_id == current_user.id)
@@ -59,20 +66,28 @@ def get_media_library(
         event_title = m.timeline_event.title if m.timeline_event else None
         gallery_title = m.gallery.title if m.gallery else None
 
-        # UI origin
+        # --------------------------------------------------
+        # Origin label for UI
+        # --------------------------------------------------
         if gallery_title:
             origin = f"Gallery: {_safe_name(gallery_title, 'Gallery')}"
             label = _safe_name(gallery_title, "Gallery media")
+
         elif event_title:
             origin = f"Event: {_safe_name(event_title, 'Event')}"
             label = _safe_name(event_title, "Event media")
+
         elif profile_name:
             origin = f"Profile: {_safe_name(profile_name, 'Profile')}"
             label = _safe_name(profile_name, "Profile media")
+
         else:
             origin = "Personal media"
             label = "Media"
 
+        # --------------------------------------------------
+        # Main media entry
+        # --------------------------------------------------
         results.append({
             "id": f"media-{m.id}",
             "media_id": m.id,
@@ -94,9 +109,9 @@ def get_media_library(
             "gallery_id": m.gallery_id,
         })
 
-        # ----------------------------------------------------------
-        # ALSO expose media-level voice notes as separate AUDIO item
-        # ----------------------------------------------------------
+        # --------------------------------------------------
+        # Separate AUDIO entry for media voice note
+        # --------------------------------------------------
         if m.voice_note_path:
             results.append({
                 "id": f"media-voice-{m.id}",
@@ -119,12 +134,18 @@ def get_media_library(
                 "gallery_id": m.gallery_id,
             })
 
-    # ----------------------------------------------------------
-    # 2) Profile voice note (Profile.voice_note_path)  ✅
-    # ----------------------------------------------------------
-    my_profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
+    # ======================================================
+    # 2) Profile Voice Note
+    # ======================================================
+    my_profile = (
+        db.query(Profile)
+        .filter(Profile.user_id == current_user.id)
+        .first()
+    )
+
     if my_profile and my_profile.voice_note_path:
         pname = _safe_name(my_profile.full_name, "My profile")
+
         results.append({
             "id": f"profile-audio-{my_profile.id}",
             "profile_id": my_profile.id,
@@ -146,9 +167,9 @@ def get_media_library(
             "gallery_id": None,
         })
 
-    # ----------------------------------------------------------
-    # 3) Event voice notes (TimelineEvent.audio_url) ✅
-    # ----------------------------------------------------------
+    # ======================================================
+    # 3) Event Voice Notes
+    # ======================================================
     if my_profile:
         events = (
             db.query(TimelineEvent)
@@ -158,15 +179,17 @@ def get_media_library(
         )
 
         for e in events:
-            if not e.audio_url:
+            if not e.voice_note_path:
                 continue
+
             title = _safe_name(e.title, f"Event {e.id}")
+
             results.append({
                 "id": f"event-audio-{e.id}",
                 "event_id": e.id,
                 "profile_id": my_profile.id,
 
-                "file_path": _abs(e.audio_url),
+                "file_path": _abs(e.voice_note_path),
                 "file_type": "audio",
 
                 "label": "Event voice note",
@@ -182,9 +205,9 @@ def get_media_library(
                 "gallery_id": None,
             })
 
-    # ----------------------------------------------------------
-    # 4) Gallery voice notes (EventGallery.voice_note_path) ✅
-    # ----------------------------------------------------------
+    # ======================================================
+    # 4) Gallery Voice Notes
+    # ======================================================
     if my_profile:
         galleries = (
             db.query(EventGallery)
@@ -199,8 +222,11 @@ def get_media_library(
                 continue
 
             gtitle = _safe_name(g.title, f"Gallery {g.id}")
-            # try event title too
-            etitle = _safe_name(g.event.title if g.event else None, f"Event {g.event_id}")
+            etitle = _safe_name(
+                g.event.title if g.event else None,
+                f"Event {g.event_id}"
+            )
+
             results.append({
                 "id": f"gallery-audio-{g.id}",
                 "gallery_id": g.id,
@@ -223,5 +249,3 @@ def get_media_library(
             })
 
     return results
-
-

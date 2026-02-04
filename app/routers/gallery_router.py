@@ -2,7 +2,6 @@
 
 import os
 import uuid
-import shutil
 import subprocess
 import json
 from datetime import datetime
@@ -42,6 +41,7 @@ from app.schemas.gallery_schema import (
 )
 
 from app.storage import validate_file_size
+from app.storage import save_file, delete_file, save_voice_file
 
 
 router = APIRouter(prefix="/gallery", tags=["Galleries"])
@@ -52,9 +52,8 @@ router = APIRouter(prefix="/gallery", tags=["Galleries"])
 # GLOBAL FFmpeg PATHS (Windows)
 # =====================================================================
 
-FFMPEG_PATH = r"C:\Users\laure\ffmpeg-2025-11-24-git-c732564d2e-full_build\bin\ffmpeg.exe"
-FFPROBE_PATH = r"C:\Users\laure\ffmpeg-2025-11-24-git-c732564d2e-full_build\bin\ffprobe.exe"
-
+FFMPEG_PATH = "ffmpeg"
+FFPROBE_PATH = "ffprobe"
 
 # =====================================================================
 # FFMPEG HELPERS
@@ -277,40 +276,24 @@ def delete_gallery(
     if not owns_event(current_user.id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    # --------------------------------------------------
-    # Clear main media + gallery-level voice note
-    # --------------------------------------------------
-    g.main_media_id = None
-    g.voice_note_path = None
-    db.commit()
-
-    # --------------------------------------------------
-    # Delete all media inside this gallery
-    # --------------------------------------------------
+    # Delete all media files in gallery
     media_items = db.query(MediaFile).filter(MediaFile.gallery_id == gallery_id).all()
 
     for m in media_items:
-        for p in [m.file_path, m.thumbnail_path, m.voice_note_path]:
-            if p:
-                fs = p.lstrip("/").replace("/", os.sep)
-                if os.path.exists(fs):
-                    try:
-                        os.remove(fs)
-                    except:
-                        pass
+        for path in [m.file_path, m.thumbnail_path, m.voice_note_path]:
+            if path:
+                delete_file(path)
 
         db.delete(m)
 
-    db.commit()
+    # Delete gallery voice note
+    if g.voice_note_path:
+        delete_file(g.voice_note_path)
 
-    # --------------------------------------------------
-    # Delete gallery itself
-    # --------------------------------------------------
     db.delete(g)
     db.commit()
 
     return {"message": "Gallery deleted"}
-
 # ==========================================================
 # REORDER GALLERIES
 # ==========================================================
@@ -376,8 +359,6 @@ def reorder_media(
 # UPLOAD MEDIA-LEVEL VOICE NOTE (UNIFIED)
 # ==========================================================
 
-from app.storage import save_voice_file
-
 @router.post("/{gallery_id}/media/{media_id}/voice")
 async def upload_media_voice_note(
     gallery_id: int,
@@ -386,48 +367,40 @@ async def upload_media_voice_note(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # 1. Verify gallery exists
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
-    # 2. Verify user owns the event
     if not owns_event(current_user.id, gallery.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    # 3. Verify media exists inside this gallery
     media = db.query(MediaFile).filter(
         MediaFile.id == media_id,
         MediaFile.gallery_id == gallery_id
     ).first()
 
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise HTTPException(status_code=404)
 
-    # 4. Save audio with shared helper
     event = gallery.event
 
+    # ✅ Upload voice note
     url = save_voice_file(
         user_id=str(current_user.id),
         profile_id=str(event.profile_id),
         event_id=event.id,
         gallery_id=gallery_id,
         media_id=media_id,
-        scope="media",     # tells storage.py: media-level voice
+        scope="media",
         upload=file,
     )
 
-    # 5. Delete old recording
+    # ✅ Delete old one
     if media.voice_note_path:
-        old = media.voice_note_path.lstrip("/").replace("/", os.sep)
-        if os.path.exists(old):
-            try: os.remove(old)
-            except: pass
+        delete_file(media.voice_note_path)
 
-    # 6. Update DB
     media.voice_note_path = url
     db.commit()
-    db.refresh(media)
 
     return {"path": url, "success": True}
 
@@ -444,10 +417,10 @@ async def delete_media_voice_note(
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
     if not owns_event(current_user.id, gallery.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
     media = db.query(MediaFile).filter(
         MediaFile.id == media_id,
@@ -455,20 +428,18 @@ async def delete_media_voice_note(
     ).first()
 
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise HTTPException(status_code=404)
 
-    # delete file
-    if media.voice_note_path:
-        fs_path = media.voice_note_path.lstrip("/").replace("/", os.sep)
-        if os.path.exists(fs_path):
-            try: os.remove(fs_path)
-            except: pass
+    if not media.voice_note_path:
+        return {"message": "No media voice note set"}
+
+    # ✅ Delete from Supabase
+    delete_file(media.voice_note_path)
 
     media.voice_note_path = None
     db.commit()
 
-    return {"message": "Voice note deleted", "success": True}
-
+    return {"message": "Media voice note deleted", "success": True}
 
 # =====================================================================
 # UPLOAD GALLERY MEDIA
@@ -498,41 +469,17 @@ async def upload_gallery_media(
     if not is_video and ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    base_folder = (
-        f"media/users/{user_id}/profiles/{profile_id}/"
-        f"events/{event.id}/galleries/{gallery_id}"
-    )
-    orig_folder = os.path.join(base_folder, "original")
-    os.makedirs(orig_folder, exist_ok=True)
+    # ✅ Supabase folder
+    folder = f"users/{user_id}/profiles/{profile_id}/events/{event.id}/galleries/{gallery_id}/original"
 
-    # -------------------------------------------------
-    # ALWAYS CREATE A NEW FILE
-    # -------------------------------------------------
-    file.file.seek(0)
-    filename = f"{uuid.uuid4()}{ext}"
-    full_path = os.path.join(orig_folder, filename)
-
-    with open(full_path, "wb") as out:
-        shutil.copyfileobj(file.file, out)
-
-    file_url = "/" + full_path.replace(os.sep, "/")
-    file_size = os.path.getsize(full_path)
+    # ✅ Upload file
+    file_url = save_file(folder, file)
 
     thumb_url = None
     duration_seconds = None
 
-    if is_video:
-        thumb_folder = os.path.join(base_folder, "thumbnails")
-        os.makedirs(thumb_folder, exist_ok=True)
-
-        thumb_path = os.path.join(
-            thumb_folder, f"thumb_{uuid.uuid4()}.jpg"
-        )
-        if generate_video_thumbnail(full_path, thumb_path):
-            thumb_url = "/" + thumb_path.replace(os.sep, "/")
-
-        secs = get_video_duration_seconds(full_path)
-        duration_seconds = secs if secs and secs > 0 else None
+    # (Thumbnail generation skipped for now on Supabase —
+    # we can add later if needed)
 
     last = (
         db.query(MediaFile)
@@ -550,7 +497,6 @@ async def upload_gallery_media(
         file_path=file_url,
         file_type="video" if is_video else "image",
         caption=caption,
-        file_size=file_size,
         thumbnail_path=thumb_url,
         order_index=next_index,
         duration_seconds=duration_seconds,
@@ -576,81 +522,37 @@ async def replace_gallery_media(
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
     if not owns_event(current_user.id, gallery.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    media = (
-        db.query(MediaFile)
-        .filter(
-            MediaFile.id == media_id,
-            MediaFile.gallery_id == gallery_id,
-        )
-        .first()
-    )
+    media = db.query(MediaFile).filter(
+        MediaFile.id == media_id,
+        MediaFile.gallery_id == gallery_id
+    ).first()
+
     if not media:
-        raise HTTPException(status_code=404, detail="Media not found")
+        raise HTTPException(status_code=404)
 
-    # -------------------------------------------------
-    # DELETE OLD FILES
-    # -------------------------------------------------
-    for path in [media.file_path, media.thumbnail_path]:
-        if path:
-            fs_path = path.lstrip("/").replace("/", os.sep)
-            try:
-                os.remove(fs_path)
-            except Exception:
-                pass
+    # ✅ Delete old file + thumb
+    delete_file(media.file_path)
+    if media.thumbnail_path:
+        delete_file(media.thumbnail_path)
 
     ext = os.path.splitext(file.filename)[1].lower()
-    is_video = ext in {".mp4", ".mov", ".avi", ".mkv", ".wmv"}
+    is_video = ext in {".mp4", ".mov"}
 
-    if not is_video and ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    folder = f"users/{current_user.id}/profiles/{gallery.event.profile_id}/events/{gallery.event_id}/galleries/{gallery_id}/original"
 
-    base_folder = (
-        f"media/users/{current_user.id}/profiles/{gallery.event.profile_id}/"
-        f"events/{gallery.event_id}/galleries/{gallery_id}"
-    )
-    orig_folder = os.path.join(base_folder, "original")
-    os.makedirs(orig_folder, exist_ok=True)
+    # ✅ Upload replacement
+    new_url = save_file(folder, file)
 
-    # -------------------------------------------------
-    # ALWAYS CREATE A NEW FILE
-    # -------------------------------------------------
-    file.file.seek(0)
-    filename = f"{uuid.uuid4()}{ext}"
-    full_path = os.path.join(orig_folder, filename)
-
-    with open(full_path, "wb") as out:
-        shutil.copyfileobj(file.file, out)
-
-    file_url = "/" + full_path.replace(os.sep, "/")
-    file_size = os.path.getsize(full_path)
-
-    media.file_path = file_url
+    media.file_path = new_url
     media.file_type = "video" if is_video else "image"
-    media.file_size = file_size
     media.thumbnail_path = None
     media.duration_seconds = None
-    media.uploaded_at = datetime.utcnow()  # 🔥 REQUIRED
-
-    # -------------------------------------------------
-    # VIDEO THUMB + DURATION
-    # -------------------------------------------------
-    if is_video:
-        thumb_folder = os.path.join(base_folder, "thumbnails")
-        os.makedirs(thumb_folder, exist_ok=True)
-
-        thumb_path = os.path.join(
-            thumb_folder, f"thumb_{uuid.uuid4()}.jpg"
-        )
-        if generate_video_thumbnail(full_path, thumb_path):
-            media.thumbnail_path = "/" + thumb_path.replace(os.sep, "/")
-
-        secs = get_video_duration_seconds(full_path)
-        media.duration_seconds = secs if secs and secs > 0 else None
+    media.uploaded_at = datetime.utcnow()
 
     db.commit()
     db.refresh(media)
@@ -703,28 +605,21 @@ def delete_gallery_media(
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
     if not owns_event(current_user.id, g.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
     m = db.query(MediaFile).filter(MediaFile.id == media_id).first()
-    if not m or m.gallery_id != gallery_id:
-        raise HTTPException(status_code=404, detail="Media not found")
+    if not m:
+        raise HTTPException(status_code=404)
 
     if g.main_media_id == media_id:
         g.main_media_id = None
-    
-    db.commit()
 
     for p in [m.file_path, m.thumbnail_path, m.voice_note_path]:
         if p:
-            fs = p.lstrip("/").replace("/", os.sep)
-            if os.path.exists(fs):
-                try:
-                    os.remove(fs)
-                except:
-                    pass
+            delete_file(p)
 
     db.delete(m)
     db.commit()
@@ -769,8 +664,6 @@ def set_gallery_thumbnail(
 # UPLOAD GALLERY-LEVEL VOICE NOTE  (UNIFIED)
 # =====================================================================
 
-from app.storage import save_voice_file
-
 @router.post("/{gallery_id}/voice-note")
 async def upload_gallery_voice_note(
     gallery_id: int,
@@ -778,18 +671,16 @@ async def upload_gallery_voice_note(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # 1. Load gallery
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    # 2. Permission check
     if not owns_event(current_user.id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     event = gallery.event
 
-    # 3. Save audio using central method
+    # ✅ Upload to Supabase
     url = save_voice_file(
         user_id=str(current_user.id),
         profile_id=str(event.profile_id),
@@ -799,20 +690,14 @@ async def upload_gallery_voice_note(
         upload=file,
     )
 
-    # 4. Delete old voice note if present
+    # ✅ Delete old voice note
     if gallery.voice_note_path:
-        old = gallery.voice_note_path.lstrip("/").replace("/", os.sep)
-        if os.path.exists(old):
-            try: os.remove(old)
-            except: pass
+        delete_file(gallery.voice_note_path)
 
-    # 5. Save new path
     gallery.voice_note_path = url
     db.commit()
-    db.refresh(gallery)
 
     return {"path": url, "success": True}
-
 
 # =====================================================================
 # DELETE GALLERY-LEVEL VOICE NOTE  (UNIFIED)
@@ -831,12 +716,11 @@ async def delete_gallery_voice_note(
     if not owns_event(current_user.id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    # delete file
-    if gallery.voice_note_path:
-        fs = gallery.voice_note_path.lstrip("/").replace("/", os.sep)
-        if os.path.exists(fs):
-            try: os.remove(fs)
-            except: pass
+    if not gallery.voice_note_path:
+        return {"message": "No gallery voice note set"}
+
+    # ✅ Delete from Supabase
+    delete_file(gallery.voice_note_path)
 
     gallery.voice_note_path = None
     db.commit()

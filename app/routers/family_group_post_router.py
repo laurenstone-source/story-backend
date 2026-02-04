@@ -185,6 +185,9 @@ def delete_post(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    from app.models.family_group_post_media import FamilyGroupPostMedia
+    from app.storage import delete_file
+
     me = get_current_user_profile(db, current_user.id)
 
     post = db.query(FamilyGroupPost).filter(
@@ -194,7 +197,10 @@ def delete_post(
     if not post:
         raise HTTPException(404, "Post not found")
 
-    group = db.query(FamilyGroup).filter(FamilyGroup.id == post.group_id).first()
+    group = db.query(FamilyGroup).filter(
+        FamilyGroup.id == post.group_id
+    ).first()
+
     if group and group.is_archived:
         raise HTTPException(400, "Cannot delete posts from an archived group")
 
@@ -203,11 +209,26 @@ def delete_post(
     if not (is_admin(member) or post.author_profile_id == me.id):
         raise HTTPException(403, "Cannot delete this post")
 
+    # -------------------------------------------------
+    # ✅ DELETE MEDIA FILE + MEDIA RECORD
+    # -------------------------------------------------
+    media = db.query(FamilyGroupPostMedia).filter(
+        FamilyGroupPostMedia.post_id == post.id
+    ).first()
+
+    if media:
+        if media.media_path:
+            delete_file(media.media_path)
+
+        db.delete(media)
+
+    # -------------------------------------------------
+    # Soft-delete the post
+    # -------------------------------------------------
     post.status = "deleted_by_author"
     db.commit()
 
     return {"status": "deleted"}
-
 
 # --------------------------------------------------
 # HIDE POST (ADMIN)

@@ -1,74 +1,30 @@
 import uuid
-from typing import Literal
 import os
 import shutil
-from fastapi import UploadFile
 from pathlib import Path
+from typing import Literal
+
+from fastapi import UploadFile
 from app.config import settings
 
+# ==========================================================
+# SUPABASE CLIENT
+# ==========================================================
+if settings.STORAGE_BACKEND == "supabase":
+    from app.supabase_client import supabase
 
 
-
-MAX_TOTAL_STORAGE = 1 * 1024 * 1024 * 1024   # 1GB
-MAX_IMAGE_SIZE = 5 * 1024 * 1024             # 5MB
-MAX_VIDEO_SIZE = 50 * 1024 * 1024            # 50MB
-
-
-# ---------------------------------------------------------
-# Root: /media/{user_id}/
-# ---------------------------------------------------------
-def user_root(user_id: str) -> Path:
-    root = Path(settings.LOCAL_MEDIA_PATH) / user_id
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+# ==========================================================
+# LIMITS
+# ==========================================================
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+MAX_VIDEO_SIZE = 50 * 1024 * 1024
 
 
-# ---------------------------------------------------------
-# Nested folder helpers
-# ---------------------------------------------------------
-def event_main_folder(user_id: str, profile_id: str, event_id: int) -> Path:
-    path = (
-        Path(settings.LOCAL_MEDIA_PATH)
-        / "users" / user_id
-        / "profiles" / str(profile_id)
-        / "events" / str(event_id)
-        / "main"
-    )
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def gallery_folder(user_id: str, profile_id: str, event_id: int, gallery_id: int) -> Path:
-    path = (
-        Path(settings.LOCAL_MEDIA_PATH)
-        / user_id
-        / str(profile_id)
-        / "events"
-        / str(event_id)
-        / "galleries"
-        / str(gallery_id)
-    )
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-# ---------------------------------------------------------
-# Storage usage
-# ---------------------------------------------------------
-def get_user_storage_used(user_id: str):
-    folder = Path(settings.LOCAL_MEDIA_PATH) / user_id
-    if not folder.exists():
-        return 0
-    return sum(f.stat().st_size for f in folder.rglob("*") if f.is_file())
-
-
-# ---------------------------------------------------------
-# File size validation
-# ---------------------------------------------------------
+# ==========================================================
+# VALIDATE FILE SIZE
+# ==========================================================
 def validate_file_size(file: UploadFile):
-    # FastAPI UploadFile has no size attribute
-    # We must read the stream length safely
-
     file.file.seek(0, os.SEEK_END)
     size = file.file.tell()
     file.file.seek(0)
@@ -84,29 +40,114 @@ def validate_file_size(file: UploadFile):
     return True, None
 
 
-# ---------------------------------------------------------
-# Generic save helper
-# ---------------------------------------------------------
-def save_file_to_folder(folder: Path | str, file: UploadFile, new_filename: str = None) -> str:
+# ==========================================================
+# EXTRACT SUPABASE STORAGE KEY
+# ==========================================================
+def extract_storage_key(url_or_path: str) -> str:
+    """
+    Converts Supabase public URL → storage key.
+    """
 
-    if isinstance(folder, str):
-        folder = Path(folder)
+    if not url_or_path:
+        return ""
 
-    folder.mkdir(parents=True, exist_ok=True)
+    if url_or_path.startswith("http"):
+        marker = f"/storage/v1/object/public/{settings.SUPABASE_BUCKET}/"
+        if marker in url_or_path:
+            return url_or_path.split(marker)[1]
 
-    filename = new_filename if new_filename else file.filename
-    file_path = folder / filename
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    rel = file_path.relative_to(settings.LOCAL_MEDIA_PATH)
-    return f"/media/{rel}".replace("\\", "/")
+    return url_or_path.strip("/")
 
 
-# ---------------------------------------------------------
-# AUDIO SAVE: profile, event, gallery, media
-# ---------------------------------------------------------
+# ==========================================================
+# SAVE FILE (LOCAL or SUPABASE)
+# ==========================================================
+def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str:
+
+    folder = folder.strip("/")
+
+    if not filename:
+        filename = f"{uuid.uuid4()}_{file.filename}"
+
+    # -----------------------------
+    # LOCAL STORAGE
+    # -----------------------------
+    if settings.STORAGE_BACKEND == "local":
+
+        folder_path = Path(settings.LOCAL_MEDIA_PATH) / folder
+        folder_path.mkdir(parents=True, exist_ok=True)
+
+        file_path = folder_path / filename
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        rel = file_path.relative_to(settings.LOCAL_MEDIA_PATH)
+        return f"/media/{rel}".replace("\\", "/")
+
+    # -----------------------------
+    # SUPABASE STORAGE
+    # -----------------------------
+    elif settings.STORAGE_BACKEND == "supabase":
+
+        storage_key = f"{folder}/{filename}"
+
+        file.file.seek(0)
+        contents = file.file.read()
+        file.file.seek(0)
+
+        supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
+            storage_key,
+            contents,
+            {
+                "content-type": file.content_type,
+                "x-upsert": "true",
+            },
+        )
+
+        return supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(
+            storage_key
+        )
+
+    else:
+        raise ValueError("Invalid STORAGE_BACKEND")
+
+
+# ==========================================================
+# DELETE FILE (LOCAL or SUPABASE)
+# ==========================================================
+def delete_file(path: str):
+    if not path:
+        return
+
+    # -----------------------------
+    # LOCAL DELETE
+    # -----------------------------
+    if settings.STORAGE_BACKEND == "local":
+
+        fs_path = path.lstrip("/").replace("/", os.sep)
+        if os.path.exists(fs_path):
+            try:
+                os.remove(fs_path)
+            except:
+                pass
+
+    # -----------------------------
+    # SUPABASE DELETE
+    # -----------------------------
+    elif settings.STORAGE_BACKEND == "supabase":
+
+        key = extract_storage_key(path)
+
+        try:
+            supabase.storage.from_(settings.SUPABASE_BUCKET).remove([key])
+        except Exception as e:
+            print("Supabase delete failed:", e)
+
+
+# ==========================================================
+# VOICE NOTE SAVE
+# ==========================================================
 def save_voice_file(
     *,
     user_id: str,
@@ -117,14 +158,6 @@ def save_voice_file(
     gallery_id: int | None = None,
     media_id: int | None = None,
 ) -> str:
-    """
-    Saves a voice note in the correct folder based on scope.
-    Supports:
-      - profile-level
-      - event-level
-      - gallery-level
-      - media-level (NEW)
-    """
 
     ext = os.path.splitext(upload.filename)[1].lower()
     if ext not in [".m4a", ".aac", ".mp3", ".wav"]:
@@ -132,93 +165,31 @@ def save_voice_file(
 
     filename = f"voice_{uuid.uuid4()}{ext}"
 
-    # --------------------------
-    # Profile-level
-    # --------------------------
+    # Folder by scope
     if scope == "profile":
-        folder = (
-            Path(settings.LOCAL_MEDIA_PATH)
-            / "users" / user_id
-            / "profiles" / str(profile_id)
-            / "voice"
-        )
+        folder = f"users/{user_id}/profiles/{profile_id}/voice"
 
-    # --------------------------
-    # Event-level
-    # --------------------------
     elif scope == "event":
-        folder = (
-            Path(settings.LOCAL_MEDIA_PATH)
-            / "users" / user_id
-            / "profiles" / str(profile_id)
-            / "events" / str(event_id)
-            / "voice"
-        )
+        folder = f"users/{user_id}/profiles/{profile_id}/events/{event_id}/voice"
 
-    # --------------------------
-    # Gallery-level
-    # --------------------------
     elif scope == "gallery":
-        folder = (
-            Path(settings.LOCAL_MEDIA_PATH)
-            / "users" / user_id
-            / "profiles" / str(profile_id)
-            / "events" / str(event_id)
-            / "galleries" / str(gallery_id)
-            / "voice"
-        )
+        folder = f"users/{user_id}/profiles/{profile_id}/events/{event_id}/galleries/{gallery_id}/voice"
 
-    # --------------------------
-    # MEDIA-level (NEW)
-    # --------------------------
     elif scope == "media":
-        folder = (
-            Path(settings.LOCAL_MEDIA_PATH)
-            / "users" / user_id
-            / "profiles" / str(profile_id)
-            / "events" / str(event_id)
-            / "galleries" / str(gallery_id)
-            / "media"
-            / str(media_id)
-            / "voice"
-        )
+        folder = f"users/{user_id}/profiles/{profile_id}/events/{event_id}/galleries/{gallery_id}/media/{media_id}/voice"
 
     else:
-        raise ValueError("Invalid scope for save_voice_file")
+        raise ValueError("Invalid scope")
 
-    # Save and return web URL
-    url = save_file_to_folder(folder, upload, filename)
-    return url
+    return save_file(folder, upload, filename)
 
-    # --------------------------
-    # Group
-    # --------------------------
 
-def group_image_folder(user_id: str, profile_id: str, group_id: str) -> Path:
-    path = (
-        Path(settings.LOCAL_MEDIA_PATH)
-        / "users"
-        / user_id
-        / "profiles"
-        / str(profile_id)
-        / "groups"
-        / str(group_id)
-        / "image"
-    )
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-# ---------------------------------------------------------
-# DELETE FILE SAFELY (local now, bucket later)
-# ---------------------------------------------------------
-def delete_file(path: str):
-    if not path:
-        return
+# ==========================================================
+# GROUP IMAGE SAVE
+# ==========================================================
+def save_group_image(user_id: str, profile_id: str, group_id: str, upload: UploadFile):
 
-    fs_path = path.lstrip("/").replace("/", os.sep)
+    filename = f"group_{uuid.uuid4()}.jpg"
+    folder = f"users/{user_id}/profiles/{profile_id}/groups/{group_id}/image"
 
-    if os.path.exists(fs_path):
-        try:
-            os.remove(fs_path)
-        except:
-            pass
-
+    return save_file(folder, upload, filename)

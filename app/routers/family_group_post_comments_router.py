@@ -256,26 +256,54 @@ def delete_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    from app.models.family_group_post_comment_media import (
+        FamilyGroupPostCommentMedia
+    )
+    from app.storage import delete_file
+
     me = get_current_user_profile(db, current_user.id)
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id
     ).first()
+
     if not comment:
         raise HTTPException(404, "Comment not found")
 
     post = comment.post
+
     group = db.query(FamilyGroup).filter(
         FamilyGroup.id == post.group_id
     ).first()
+
     if group and group.is_archived:
-        raise HTTPException(400, "Cannot delete comments from an archived group")
+        raise HTTPException(
+            400,
+            "Cannot delete comments from an archived group"
+        )
 
     member = require_member(db, post.group_id, me.id)
 
+    # Author OR admin can delete
     if not (is_admin(member) or comment.author_profile_id == me.id):
         raise HTTPException(403, "Cannot delete this comment")
 
+    # -------------------------------------------------
+    # ✅ DELETE COMMENT MEDIA FILE + DB RECORD
+    # -------------------------------------------------
+    media = db.query(FamilyGroupPostCommentMedia).filter(
+        FamilyGroupPostCommentMedia.comment_id == comment.id
+    ).first()
+
+    if media:
+        if media.media_path:
+            delete_file(media.media_path)
+
+        db.delete(media)
+
+    # -------------------------------------------------
+    # Soft delete comment
+    # -------------------------------------------------
     comment.status = "deleted_by_author"
     db.commit()
 

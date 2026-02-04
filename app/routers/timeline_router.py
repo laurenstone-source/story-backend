@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 from datetime import datetime
 
 from fastapi import (
@@ -28,11 +27,8 @@ from app.models.media import MediaFile
 from app.models.profile import Profile
 from app.models.user import User
 
-from app.storage import (
-    event_main_folder,
-    validate_file_size,
-    save_file_to_folder,
-)
+from app.storage import save_file, delete_file, save_voice_file
+
 from app.storage import save_voice_file
 
 router = APIRouter(prefix="/timeline", tags=["Timeline Events"])
@@ -188,6 +184,7 @@ async def upload_timeline_main_media(
     current_user: User = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -202,68 +199,41 @@ async def upload_timeline_main_media(
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
-    folder = event_main_folder(
-        user_id=str(current_user.id),
-        profile_id=str(event.profile_id),
-        event_id=event_id,
-    )
-    os.makedirs(folder, exist_ok=True)
+    # ✅ Supabase folder path (string)
+    folder = f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/main"
+
+    # ✅ Upload new image
+    url = save_file(folder, file)
 
     # -------------------------------------------------
-    # REPLACE EXISTING (ALWAYS CREATE NEW FILE)
+    # REPLACE EXISTING IMAGE
     # -------------------------------------------------
     if event.main_media_id:
-        media = (
-            db.query(MediaFile)
-            .filter(MediaFile.id == event.main_media_id)
-            .first()
-        )
+        media = db.query(MediaFile).filter(
+            MediaFile.id == event.main_media_id
+        ).first()
 
-        if not media:
-            raise HTTPException(status_code=500, detail="Media reference broken")
+        if media:
+            # ✅ Delete old Supabase file
+            delete_file(media.file_path)
 
-        # delete old file
-        old_path = media.file_path.lstrip("/")
-        try:
-            os.remove(old_path)
-        except Exception:
-            pass
+            # Update record
+            media.file_path = url
+            media.uploaded_at = datetime.utcnow()
+            db.commit()
+            db.refresh(media)
 
-        # save new file
-        new_name = f"main_{uuid.uuid4()}{ext}"
-        save_path = save_file_to_folder(
-            folder,
-            file,
-            new_filename=new_name,
-        )
-
-        absolute_path = save_path.lstrip("/")
-        size = os.path.getsize(absolute_path)
-
-        media.file_path = save_path
-        media.file_size = size
-        media.uploaded_at = datetime.utcnow()
-        db.commit()
-        db.refresh(media)
-
-        return MediaFileOut.from_orm(media)
+            return MediaFileOut.from_orm(media)
 
     # -------------------------------------------------
     # FIRST UPLOAD
     # -------------------------------------------------
-    new_name = f"main_{uuid.uuid4()}{ext}"
-    save_path = save_file_to_folder(folder, file, new_filename=new_name)
-
-    absolute_path = save_path.lstrip("/")
-    size = os.path.getsize(absolute_path)
-
     media = MediaFile(
         user_id=current_user.id,
         profile_id=event.profile_id,
         event_id=event.id,
-        file_path=save_path,
+        file_path=url,
         file_type="image",
-        file_size=size,
         original_scope="event",
     )
 
@@ -296,15 +266,13 @@ def delete_event_main_media(
     if not event.main_media_id:
         return {"message": "No main image set"}
 
-    media = db.query(MediaFile).filter(MediaFile.id == event.main_media_id).first()
+    media = db.query(MediaFile).filter(
+        MediaFile.id == event.main_media_id
+    ).first()
 
     if media:
-        if media.file_path:
-            fs = media.file_path.lstrip("/").replace("/", os.sep)
-            try:
-                os.remove(fs)
-            except:
-                pass
+        # ✅ Delete from Supabase
+        delete_file(media.file_path)
 
         db.delete(media)
 
@@ -312,7 +280,6 @@ def delete_event_main_media(
     db.commit()
 
     return {"success": True, "message": "Event main image deleted"}
-
 # =====================================================================
 # DELETE EVENT
 # =====================================================================
@@ -323,16 +290,26 @@ def delete_event(
     current_user: User = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
+
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPException(status_code=404)
 
     if not owns_profile(current_user.id, event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
+    # ✅ Delete main media
     if event.main_media_id:
-        media = db.query(MediaFile).filter(MediaFile.id == event.main_media_id).first()
+        media = db.query(MediaFile).filter(
+            MediaFile.id == event.main_media_id
+        ).first()
+
         if media:
+            delete_file(media.file_path)
             db.delete(media)
+
+    # ✅ Delete voice note
+    if event.audio_url:
+        delete_file(event.audio_url)
 
     db.delete(event)
     db.commit()
@@ -351,33 +328,27 @@ async def upload_event_voice_note(
     current_user: User = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
     if not owns_profile(current_user.id, event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    url = save_voice_file(
-        user_id=str(current_user.id),
-        profile_id=str(event.profile_id),
-        event_id=event.id,
-        scope="event",
-        upload=file,
-    )
+    folder = f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/voice"
 
+    # ✅ Upload new audio
+    url = save_file(folder, file)
+
+    # ✅ Delete old audio if exists
     if event.audio_url:
-        old = event.audio_url.lstrip("/").replace("/", os.sep)
-        try:
-            os.remove(old)
-        except:
-            pass
+        delete_file(event.audio_url)
 
     event.audio_url = url
     db.commit()
     db.refresh(event)
 
-    return {"path": url, "audio_url": url, "success": True}
-
+    return {"path": url, "success": True}
 
 # =====================================================================
 # DELETE EVENT VOICE NOTE
@@ -389,6 +360,7 @@ async def delete_event_voice_note(
     current_user: User = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
+
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -396,14 +368,9 @@ async def delete_event_voice_note(
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if event.audio_url:
-        fs = event.audio_url.lstrip("/").replace("/", os.sep)
-        try:
-            os.remove(fs)
-        except:
-            pass
+        delete_file(event.audio_url)
 
     event.audio_url = None
-    event.voice_note_path = None
     db.commit()
 
     return {"message": "Event audio deleted"}

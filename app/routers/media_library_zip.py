@@ -1,3 +1,5 @@
+# app/routers/media_library_zip_router.py
+
 import os
 import zipfile
 import tempfile
@@ -11,20 +13,21 @@ from app.auth import get_current_user
 from app.models.user import User
 from app.models.media import MediaFile
 
-# ✅ Correct model imports
 from app.models.profile import Profile
 from app.models.event_gallery import EventGallery
 from app.models.timeline_event import TimelineEvent
+
 
 router = APIRouter(prefix="/media-library", tags=["Media Library ZIP"])
 
 
 # ==========================================================
-# SAFE FILE/FOLDER NAME
+# SAFE NAME
 # ==========================================================
 def safe_name(text: str) -> str:
     return (
-        text.replace(":", "")
+        (text or "")
+        .replace(":", "")
         .replace("–", "-")
         .replace("/", "-")
         .replace("\\", "-")
@@ -34,44 +37,56 @@ def safe_name(text: str) -> str:
 
 
 # ==========================================================
-# GET NICE FOLDER LABEL
+# NICE LABEL
 # ==========================================================
 def get_folder_label(db: Session, media: MediaFile) -> str:
 
-    # PROFILE MEDIA
     if media.profile_id:
         profile = db.query(Profile).filter(Profile.id == media.profile_id).first()
-        if profile:
-            return f"Profile_{profile.full_name}"
-        return "Profile_Unknown"
+        return f"Profile_{profile.full_name}" if profile else "Profile_Unknown"
 
-    # GALLERY MEDIA
     if media.gallery_id:
-        gallery = (
-            db.query(EventGallery)
-            .filter(EventGallery.id == media.gallery_id)
-            .first()
-        )
-        if gallery:
-            return f"Gallery_{gallery.title}"
-        return "Gallery_Unknown"
+        gallery = db.query(EventGallery).filter(EventGallery.id == media.gallery_id).first()
+        return f"Gallery_{gallery.title}" if gallery else "Gallery_Unknown"
 
-    # EVENT MEDIA
     if media.event_id:
-        event = (
-            db.query(TimelineEvent)
-            .filter(TimelineEvent.id == media.event_id)
-            .first()
-        )
-        if event:
-            return f"Event_{event.title}"
-        return "Event_Unknown"
+        event = db.query(TimelineEvent).filter(TimelineEvent.id == media.event_id).first()
+        return f"Event_{event.title}" if event else "Event_Unknown"
 
     return "Other"
 
 
 # ==========================================================
-# DOWNLOAD ALL MEDIA ZIP (STRUCTURED)
+# DOWNLOAD ONE FILE FROM SUPABASE
+# ==========================================================
+def download_supabase_file(storage_path: str) -> str | None:
+    """
+    Downloads a file from Supabase Storage into a temp file.
+    Returns the temp file path.
+    """
+
+    try:
+        bucket = supabase_client.storage.from_("media")
+
+        response = bucket.download(storage_path)
+
+        if not response:
+            return None
+
+        # Save into temp file
+        tmp_fd, tmp_path = tempfile.mkstemp()
+        os.write(tmp_fd, response)
+        os.close(tmp_fd)
+
+        return tmp_path
+
+    except Exception as e:
+        print("SUPABASE DOWNLOAD ERROR:", e)
+        return None
+
+
+# ==========================================================
+# DOWNLOAD ALL MEDIA ZIP
 # ==========================================================
 @router.get("/download-all")
 def download_all_media_zip(
@@ -91,23 +106,27 @@ def download_all_media_zip(
     zip_path = os.path.join(temp_dir, "all_media.zip")
 
     with zipfile.ZipFile(zip_path, "w") as zipf:
+
         for media in media_files:
+
             if not media.file_path:
                 continue
 
-            fs_path = media.file_path.lstrip("/")
+            storage_key = media.file_path.lstrip("/")
 
-            if not os.path.exists(fs_path):
-                print("Missing file:", fs_path)
+            tmp_file = download_supabase_file(storage_key)
+            if not tmp_file:
                 continue
 
             folder = safe_name(get_folder_label(db, media))
-            filename = os.path.basename(fs_path)
+            filename = os.path.basename(storage_key)
 
             zipf.write(
-                fs_path,
+                tmp_file,
                 arcname=f"{folder}/{filename}",
             )
+
+            os.remove(tmp_file)
 
     return FileResponse(
         zip_path,
@@ -124,6 +143,7 @@ def download_folder_zip(
     scope: str = Query(...),   # profile / gallery / timeline
     id: str = Query(...),
     name: str = Query("folder"),
+
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -131,7 +151,6 @@ def download_folder_zip(
         MediaFile.user_id == current_user.id
     )
 
-    # Match correct scope
     if scope == "profile":
         query = query.filter(MediaFile.profile_id == id)
 
@@ -155,19 +174,26 @@ def download_folder_zip(
     zip_path = os.path.join(temp_dir, f"{folder_name}.zip")
 
     with zipfile.ZipFile(zip_path, "w") as zipf:
-        for media in matched:
-            fs_path = media.file_path.lstrip("/")
 
-            if not os.path.exists(fs_path):
-                print("Missing file:", fs_path)
+        for media in matched:
+
+            if not media.file_path:
                 continue
 
-            filename = os.path.basename(fs_path)
+            storage_key = media.file_path.lstrip("/")
+
+            tmp_file = download_supabase_file(storage_key)
+            if not tmp_file:
+                continue
+
+            filename = os.path.basename(storage_key)
 
             zipf.write(
-                fs_path,
+                tmp_file,
                 arcname=f"{folder_name}/{filename}",
             )
+
+            os.remove(tmp_file)
 
     return FileResponse(
         zip_path,

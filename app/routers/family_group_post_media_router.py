@@ -14,8 +14,6 @@ from app.models.family_group_post import FamilyGroupPost
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post_media import FamilyGroupPostMedia
 
-from app.storage import validate_file_size, save_file_to_folder
-
 router = APIRouter(prefix="/family-groups", tags=["Group Post Media"])
 
 
@@ -61,55 +59,95 @@ def upload_post_media(
 ):
     me = get_current_user_profile(db, current_user.id)
 
+    # -------------------------------------------------
+    # Load post
+    # -------------------------------------------------
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id
     ).first()
     if not post:
         raise HTTPException(404, "Post not found")
 
-    member = require_member(db, post.group_id, me.id)
+    require_member(db, post.group_id, me.id)
 
+    # Only author can upload media
     if post.author_profile_id != me.id:
         raise HTTPException(403, "Only the author can add media")
 
     if post.status != "visible":
         raise HTTPException(400, "Cannot add media to hidden/deleted post")
 
+    # -------------------------------------------------
+    # Validate file size
+    # -------------------------------------------------
     ok, err = validate_file_size(file)
     if not ok:
         raise HTTPException(400, err)
 
+    # -------------------------------------------------
+    # Detect media type
+    # -------------------------------------------------
     media_type = _detect_media_type(file)
 
-    folder = _post_media_folder(
-        user_id=current_user.id,
-        profile_id=me.id,
-        group_id=post.group_id,
-        post_id=post.id,
+    # -------------------------------------------------
+    # Folder path (Supabase storage key)
+    # -------------------------------------------------
+    folder = (
+        f"users/{current_user.id}/profiles/{me.id}"
+        f"/family-groups/{post.group_id}/posts/{post.id}/media"
     )
 
-    ext = os.path.splitext(file.filename or "")[1].lower() or (
-        ".jpg" if media_type == "image" else ".mp4"
-    )
+    # -------------------------------------------------
+    # Filename
+    # -------------------------------------------------
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if not ext:
+        ext = ".jpg" if media_type == "image" else ".mp4"
+
     filename = f"post_{uuid.uuid4()}{ext}"
 
-    media_path = save_file_to_folder(folder, file, filename)
+    # -------------------------------------------------
+    # Delete old file if replacing
+    # -------------------------------------------------
+    from app.storage import delete_file
 
     existing = db.query(FamilyGroupPostMedia).filter(
         FamilyGroupPostMedia.post_id == post.id
     ).first()
 
+    if existing and existing.media_path:
+        delete_file(existing.media_path)
+
+    # -------------------------------------------------
+    # Upload new file (Supabase)
+    # -------------------------------------------------
+    media_url = save_file_to_folder(
+        folder,
+        file,
+        new_filename=filename,
+    )
+
+    # -------------------------------------------------
+    # Update DB record
+    # -------------------------------------------------
     if existing:
-        existing.media_path = media_path
+        existing.media_path = media_url
         existing.media_type = media_type
     else:
         db.add(
             FamilyGroupPostMedia(
                 post_id=post.id,
-                media_path=media_path,
+                media_path=media_url,
                 media_type=media_type,
             )
         )
 
     db.commit()
-    return {"status": "ok", "media_path": media_path, "media_type": media_type}
+
+    return {
+        "status": "ok",
+        "media_path": media_url,
+        "media_type": media_type,
+        "success": True,
+    }
+

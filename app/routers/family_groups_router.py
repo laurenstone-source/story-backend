@@ -6,11 +6,6 @@ from fastapi import UploadFile, File
 import os
 from app.routers.profile_router import attach_media_urls
 from app.utils.urls import absolute_media_url
-from app.storage import (
-    validate_file_size,
-    save_file_to_folder,
-    group_image_folder,
-)
 from app.database import SessionLocal
 from app.auth import get_current_user
 from app.models.user import User
@@ -104,21 +99,49 @@ def upload_group_image(
 
     require_admin(db, group.id, me.id)
 
+    # -------------------------------------------------
+    # Validate file size
+    # -------------------------------------------------
     ok, err = validate_file_size(file)
     if not ok:
         raise HTTPException(status_code=400, detail=err)
 
-    folder = group_image_folder(
-        user_id=current_user.id,
-        profile_id=me.id,
-        group_id=group.id,
+    # -------------------------------------------------
+    # Validate extension
+    # -------------------------------------------------
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    # -------------------------------------------------
+    # Delete old image from storage
+    # -------------------------------------------------
+    from app.storage import delete_file
+
+    if group.group_image_url:
+        delete_file(group.group_image_url)
+
+    # -------------------------------------------------
+    # Upload new image (Supabase)
+    # -------------------------------------------------
+    folder = f"users/{current_user.id}/profiles/{me.id}/groups/{group.id}"
+
+    filename = f"group_{uuid.uuid4()}{ext}"
+
+    url = save_file_to_folder(
+        folder,
+        file,
+        new_filename=filename,
     )
-    filename = f"group_{uuid.uuid4()}.jpg"
-    url = save_file_to_folder(folder, file, filename)
+
+    # -------------------------------------------------
+    # Save URL in DB
+    # -------------------------------------------------
     group.group_image_url = url
     db.commit()
+    db.refresh(group)
 
-    return {"image_url": url}
+    return {"image_url": url, "success": True}
 
 
 # --------------------------------------------------

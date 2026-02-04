@@ -293,9 +293,11 @@ def update_biography(
     return {**profile.__dict__, **urls}
 
 
+from app.storage import save_file, delete_file
 # ---------------------------------------------------------------------
-# UPLOAD / UPDATE PROFILE PHOTO
+# UPLOAD pHOTO
 # ---------------------------------------------------------------------
+
 @router.post("/{profile_id}/upload-photo")
 async def upload_profile_photo(
     profile_id: str,
@@ -306,83 +308,55 @@ async def upload_profile_photo(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=404)
 
+    if profile.user_id != current_user.id:
+        raise HTTPException(status_code=403)
+
+    # Validate extension (keep this!)
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+        raise HTTPException(status_code=400)
 
-    base_folder = (
-        f"media/users/{current_user.id}/profiles/{profile_id}/profile-photo"
-    )
-    os.makedirs(base_folder, exist_ok=True)
+    # Upload to storage backend
+    folder = f"users/{current_user.id}/profiles/{profile_id}/profile-photo"
+    url = save_file(folder, file)
 
-    # -------------------------------------------------
-    # ALWAYS CREATE A NEW FILE
-    # -------------------------------------------------
-    filename = f"profile_{uuid.uuid4()}{ext}"
-    filepath = os.path.join(base_folder, filename)
-
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    url_path = "/" + filepath.replace(os.sep, "/")
-    file_size = os.path.getsize(filepath)
-
-    # -------------------------------------------------
-    # UPDATE EXISTING MEDIA RECORD
-    # -------------------------------------------------
+    # Update existing media record
     if profile.profile_picture_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == profile.profile_picture_media_id
         ).first()
 
-        if not media:
-            raise HTTPException(status_code=500, detail="Media reference broken")
+        if media:
+            delete_file(media.file_path)
 
-        # delete old file
-        old_path = media.file_path.lstrip("/")
-        try:
-            os.remove(old_path)
-        except:
-            pass
+            media.file_path = url
+            media.uploaded_at = datetime.utcnow()
+            db.commit()
 
-        media.file_path = url_path
-        media.file_size = file_size
-        media.uploaded_at = datetime.utcnow()   # 🔥 REQUIRED
-        db.commit()
-        db.refresh(media)
-
-    # -------------------------------------------------
-    # FIRST-TIME UPLOAD
-    # -------------------------------------------------
     else:
         media = MediaFile(
             user_id=current_user.id,
             profile_id=profile_id,
-            file_path=url_path,
+            file_path=url,
             file_type="image",
-            file_size=file_size,
             original_scope="profile",
-            original_media_id=None,
-    )
+        )
 
-    db.add(media)
-    db.commit()
-    db.refresh(media)
+        db.add(media)
+        db.commit()
+        db.refresh(media)
 
-    # ✅ Update profile pointer
-    profile.profile_picture_media_id = media.id
-    db.commit()
+        profile.profile_picture_media_id = media.id
+        db.commit()
 
     return {
         "id": media.id,
         "file_path": media.file_path,
-        "file_type": media.file_type,
         "scope": "profile",
     }
+
 # ---------------------------------------------------------------------
 # UPLOAD / UPDATE PROFILE VIDEO (WITH THUMBNAIL)
 # ---------------------------------------------------------------------
@@ -408,32 +382,6 @@ def generate_video_thumbnail(video_path: str, thumb_path: str):
     )
 
 
-# ---------------------------------------------------------------------
-# UPLOAD / UPDATE PROFILE VIDEO (WITH THUMBNAIL)
-# ---------------------------------------------------------------------
-
-import subprocess
-
-
-def generate_video_thumbnail(video_path: str, thumb_path: str):
-    """
-    Extract thumbnail frame at 1 second into video.
-    Requires ffmpeg installed.
-    """
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i", video_path,
-            "-ss", "00:00:01",
-            "-vframes", "1",
-            thumb_path,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
 @router.post("/{profile_id}/upload-video")
 async def upload_profile_video(
     profile_id: str,
@@ -444,103 +392,40 @@ async def upload_profile_video(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404)
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    # -------------------------------------------------
-    # Validate extension
-    # -------------------------------------------------
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".mp4", ".mov", ".m4v"}:
-        raise HTTPException(status_code=400, detail="Unsupported video type")
+        raise HTTPException(status_code=400)
 
-    # -------------------------------------------------
-    # Folder
-    # -------------------------------------------------
-    base_folder = (
-        f"media/users/{current_user.id}/profiles/{profile_id}/profile-video"
-    )
-    os.makedirs(base_folder, exist_ok=True)
+    folder = f"users/{current_user.id}/profiles/{profile_id}/profile-video"
 
-    # -------------------------------------------------
-    # Save video file
-    # -------------------------------------------------
-    filename = f"video_{uuid.uuid4()}{ext}"
-    filepath = os.path.join(base_folder, filename)
+    # Upload video to Supabase
+    url = save_file(folder, file)
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    url_path = "/" + filepath.replace(os.sep, "/")
-    file_size = os.path.getsize(filepath)
-
-    # -------------------------------------------------
-    # ✅ Generate thumbnail safely
-    # -------------------------------------------------
-    thumb_filename = f"thumb_{uuid.uuid4()}.jpg"
-    thumb_filepath = os.path.join(base_folder, thumb_filename)
-
-    thumb_url_path = None
-
-    try:
-        generate_video_thumbnail(filepath, thumb_filepath)
-
-        if os.path.exists(thumb_filepath):
-            thumb_url_path = "/" + thumb_filepath.replace(os.sep, "/")
-
-    except Exception as e:
-        print("Thumbnail generation failed:", e)
-
-    # -------------------------------------------------
-    # Update existing media record
-    # -------------------------------------------------
+    # Update existing record
     if profile.profile_video_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == profile.profile_video_media_id
         ).first()
 
-        if not media:
-            raise HTTPException(status_code=500, detail="Media reference broken")
+        if media:
+            delete_file(media.file_path)
 
-        # Delete old video file
-        old_path = media.file_path.lstrip("/")
-        try:
-            os.remove(old_path)
-        except Exception:
-            pass
+            media.file_path = url
+            media.uploaded_at = datetime.utcnow()
+            db.commit()
 
-        # Delete old thumbnail file
-        if media.thumbnail_path:
-            old_thumb = media.thumbnail_path.lstrip("/")
-            try:
-                os.remove(old_thumb)
-            except Exception:
-                pass
-
-        # Update record
-        media.file_path = url_path
-        media.file_size = file_size
-        media.thumbnail_path = thumb_url_path
-        media.uploaded_at = datetime.utcnow()
-
-        db.commit()
-        db.refresh(media)
-
-    # -------------------------------------------------
-    # First-time upload
-    # -------------------------------------------------
     else:
         media = MediaFile(
             user_id=current_user.id,
             profile_id=profile_id,
-            file_path=url_path,
+            file_path=url,
             file_type="video",
-            file_size=file_size,
-            thumbnail_path=thumb_url_path,
             original_scope="profile",
-            original_media_id=None,
         )
 
         db.add(media)
@@ -550,14 +435,10 @@ async def upload_profile_video(
         profile.profile_video_media_id = media.id
         db.commit()
 
-    # -------------------------------------------------
-    # ✅ Return response
-    # -------------------------------------------------
     return {
         "id": media.id,
         "file_path": media.file_path,
-        "thumbnail_path": media.thumbnail_path,
-        "file_type": media.file_type,
+        "file_type": "video",
         "scope": "profile",
     }
     # -------------------------------------------------
@@ -565,6 +446,8 @@ async def upload_profile_video(
 # ---------------------------------------------------------------------
 # UPLOAD PROFILE AUDIO (Voice note)
 # ---------------------------------------------------------------------
+from app.storage import save_file, delete_file
+
 @router.post("/{profile_id}/voice-note")
 async def upload_profile_voice_note(
     profile_id: str,
@@ -575,24 +458,19 @@ async def upload_profile_voice_note(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404)
+
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    url = save_voice_file(
-        user_id=str(current_user.id),
-        profile_id=profile_id,
-        scope="profile",
-        upload=file,
-    )
+    folder = f"users/{current_user.id}/profiles/{profile_id}/voice"
 
-    # Delete old file
+    # Upload new voice note
+    url = save_file(folder, file)
+
+    # Delete old one if exists
     if profile.voice_note_path:
-        old = profile.voice_note_path.lstrip("/").replace("/", os.sep)
-        try:
-            os.remove(old)
-        except:
-            pass
+        delete_file(profile.voice_note_path)
 
     profile.voice_note_path = url
     db.commit()
@@ -611,10 +489,10 @@ def delete_profile_photo(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404)
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
     if not profile.profile_picture_media_id:
         return {"message": "No profile photo set"}
@@ -624,14 +502,7 @@ def delete_profile_photo(
     ).first()
 
     if media:
-        # Delete file
-        if media.file_path:
-            fs = media.file_path.lstrip("/").replace("/", os.sep)
-            try:
-                os.remove(fs)
-            except:
-                pass
-
+        delete_file(media.file_path)
         db.delete(media)
 
     profile.profile_picture_media_id = None
@@ -651,10 +522,10 @@ def delete_profile_video(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404)
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
     if not profile.profile_video_media_id:
         return {"message": "No profile video set"}
@@ -664,20 +535,13 @@ def delete_profile_video(
     ).first()
 
     if media:
-        if media.file_path:
-            fs = media.file_path.lstrip("/").replace("/", os.sep)
-            try:
-                os.remove(fs)
-            except:
-                pass
-
+        delete_file(media.file_path)
         db.delete(media)
 
     profile.profile_video_media_id = None
     db.commit()
 
     return {"success": True, "message": "Profile video deleted"}
-
 
 # ---------------------------------------------------------------------
 # DELETE PROFILE AUDIO
@@ -691,18 +555,13 @@ async def delete_profile_voice_note(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=404)
+
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    if not profile.voice_note_path:
-        return {"message": "No voice note to delete"}
-
-    fs_path = profile.voice_note_path.lstrip("/").replace("/", os.sep)
-    try:
-        os.remove(fs_path)
-    except:
-        pass
+    if profile.voice_note_path:
+        delete_file(profile.voice_note_path)
 
     profile.voice_note_path = None
     db.commit()
