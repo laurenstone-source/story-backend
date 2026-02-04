@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import (
     Column,
     Integer,
@@ -7,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Index,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -24,6 +27,7 @@ class Connection(Base):
         nullable=False,
         index=True,
     )
+
     to_profile_id = Column(
         String,
         ForeignKey("profiles.id"),
@@ -31,19 +35,11 @@ class Connection(Base):
         index=True,
     )
 
-    # ------------------------------------
-    # Relationship labels (DIRECTIONAL)
-    # ------------------------------------
-    # How *from_profile* sees *to_profile*
+    # Relationship labels (directional)
     from_profile_relation = Column(String, nullable=True)
-
-    # How *to_profile* sees *from_profile*
     to_profile_relation = Column(String, nullable=True)
 
-    # ------------------------------------
     # Connection state
-    # ------------------------------------
-    # pending | accepted | rejected
     status = Column(
         String,
         nullable=False,
@@ -51,22 +47,21 @@ class Connection(Base):
         index=True,
     )
 
-    # Who initiated the request
+    # ✅ FIX: Who initiated the request (UUID not String)
     created_by_user_id = Column(
-        String,
+        UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
         index=True,
     )
 
-    # ------------------------------------
     # Timestamps
-    # ------------------------------------
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
     )
+
     updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -74,7 +69,6 @@ class Connection(Base):
         nullable=False,
     )
 
-    # Soft rejection timestamp (Facebook-style behaviour)
     rejected_at = Column(
         DateTime(timezone=True),
         nullable=True,
