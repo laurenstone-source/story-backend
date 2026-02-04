@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# Local database
+story.db
+
+# Media uploads (do not commit)
+media/
+
+# Environment secrets
+.env
+
+# OS junk
+.DS_Store
+Thumbs.db
