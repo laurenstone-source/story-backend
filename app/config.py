@@ -61,8 +61,8 @@ class Settings:
     # -------------------------------------------------------
     # Supabase Storage (only used if STORAGE_BACKEND=supabase)
     # -------------------------------------------------------
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
+    SUPABASE_URL: str = os.getenv("https://blqddscofxulsffddowu.supabase.co", "")
+    SUPABASE_SERVICE_KEY: str = os.getenv("sb_publishable_oUq-zVmPeGFTY8L9x0by1w_QN0RcaxM", "")
 
     SUPABASE_BUCKET: str = os.getenv(
         "SUPABASE_BUCKET",
