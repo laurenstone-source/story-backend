@@ -38,15 +38,14 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24)
     )
-    # -------------------------------------------------------
+       # -------------------------------------------------------
     # Public base URL (used to build absolute media URLs)
     # -------------------------------------------------------
     BASE_URL: str = os.getenv(
         "BASE_URL",
-        BASE_URL: str = os.getenv(
-    "BASE_URL",
-    "http://127.0.0.1:8000"
+        "http://127.0.0.1:8000"
     )
+
 
     # -------------------------------------------------------
     # Storage Configuration
