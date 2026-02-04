@@ -1,7 +1,7 @@
 # app/routers/family_group_post_comments_router.py
 from sqlalchemy.orm import joinedload
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from datetime import datetime
 
