@@ -86,7 +86,7 @@ def upload_post_media(
      # -------------------------------------------------
      ok, err = validate_file_size(file, max_mb=5)
      if not ok:
-     raise HTTPException(status_code=413, detail=err)
+      raise HTTPException(status_code=413, detail=err)
 
     # -------------------------------------------------
     # Detect media type
