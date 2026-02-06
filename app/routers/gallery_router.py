@@ -40,7 +40,7 @@ from app.schemas.gallery_schema import (
     GalleryMediaUpdate,
 )
 
-from app.storage import save_file, delete_file, save_voice_file, from app.storage import get_file_size
+from app.storage import save_file, delete_file, save_voice_file, get_file_size
 
 
 router = APIRouter(prefix="/gallery", tags=["Galleries"])
