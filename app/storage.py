@@ -13,32 +13,41 @@ from app.config import settings
 if settings.STORAGE_BACKEND == "supabase":
     from app.supabase_client import supabase
 
+# ==========================================================
+# VALIDATE File Size
+# ==========================================================
 
-# ==========================================================
-# LIMITS
-# ==========================================================
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
-MAX_VIDEO_SIZE = 50 * 1024 * 1024
-
-
-# ==========================================================
-# VALIDATE FILE SIZE
-# ==========================================================
-def validate_file_size(file: UploadFile):
+def validate_file_size(
+    file: UploadFile,
+    *,
+    max_mb: int = 5,
+) -> tuple[bool, str | None]:
+    """
+    Validates uploaded file size without consuming the file.
+    Returns (ok, error_message)
+    """
     file.file.seek(0, os.SEEK_END)
     size = file.file.tell()
     file.file.seek(0)
 
-    if file.content_type and file.content_type.startswith("image/"):
-        if size > MAX_IMAGE_SIZE:
-            return False, "Image too large (max 5MB)."
+    max_bytes = max_mb * 1024 * 1024
 
-    if file.content_type and file.content_type.startswith("video/"):
-        if size > MAX_VIDEO_SIZE:
-            return False, "Video too large (max 50MB)."
+    if size > max_bytes:
+        return (
+            False,
+            f"File too large. Max allowed size is {max_mb} MB.",
+        )
 
     return True, None
+# ==========================================================
+# GET File Size
+# ==========================================================
 
+def get_file_size(file: UploadFile) -> int:
+    file.file.seek(0, os.SEEK_END)
+    size = file.file.tell()
+    file.file.seek(0)
+    return size
 
 # ==========================================================
 # EXTRACT SUPABASE STORAGE KEY
@@ -93,13 +102,12 @@ def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str
             raise RuntimeError("File is empty – nothing to upload")
 
         res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
-            storage_key,
-            contents,
-            {
-                "content-type": file.content_type or "application/octet-stream",
-                "upsert": True,
-            },
-        )
+    storage_key,
+    contents,
+    {
+        "content-type": file.content_type or "application/octet-stream",
+    },
+)
 
         if not res:
             raise RuntimeError("Supabase upload failed (no response)")

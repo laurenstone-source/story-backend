@@ -14,6 +14,9 @@ from app.models.family_group_post import FamilyGroupPost
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post_media import FamilyGroupPostMedia
 
+from app.storage import validate_file_size, delete_file, save_file
+media_url = save_file(folder, file, filename)
+
 router = APIRouter(prefix="/family-groups", tags=["Group Post Media"])
 
 
@@ -57,6 +60,8 @@ def upload_post_media(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.storage import save_file, delete_file
+
     me = get_current_user_profile(db, current_user.id)
 
     # -------------------------------------------------
@@ -76,13 +81,12 @@ def upload_post_media(
 
     if post.status != "visible":
         raise HTTPException(400, "Cannot add media to hidden/deleted post")
-
-    # -------------------------------------------------
-    # Validate file size
-    # -------------------------------------------------
-    ok, err = validate_file_size(file)
-    if not ok:
-        raise HTTPException(400, err)
+     # -------------------------------------------------
+     # Validate file size
+     # -------------------------------------------------
+     ok, err = validate_file_size(file, max_mb=5)
+     if not ok:
+     raise HTTPException(status_code=413, detail=err)
 
     # -------------------------------------------------
     # Detect media type
@@ -90,7 +94,7 @@ def upload_post_media(
     media_type = _detect_media_type(file)
 
     # -------------------------------------------------
-    # Folder path (Supabase storage key)
+    # Folder path
     # -------------------------------------------------
     folder = (
         f"users/{current_user.id}/profiles/{me.id}"
@@ -107,10 +111,8 @@ def upload_post_media(
     filename = f"post_{uuid.uuid4()}{ext}"
 
     # -------------------------------------------------
-    # Delete old file if replacing
+    # Replace existing media if present
     # -------------------------------------------------
-    from app.storage import delete_file
-
     existing = db.query(FamilyGroupPostMedia).filter(
         FamilyGroupPostMedia.post_id == post.id
     ).first()
@@ -119,16 +121,12 @@ def upload_post_media(
         delete_file(existing.media_path)
 
     # -------------------------------------------------
-    # Upload new file (Supabase)
+    # Upload new file
     # -------------------------------------------------
-    media_url = save_file_to_folder(
-        folder,
-        file,
-        new_filename=filename,
-    )
+    media_url = save_file(folder, file, filename)
 
     # -------------------------------------------------
-    # Update DB record
+    # Persist DB
     # -------------------------------------------------
     if existing:
         existing.media_path = media_url
@@ -150,4 +148,3 @@ def upload_post_media(
         "media_type": media_type,
         "success": True,
     }
-

@@ -40,8 +40,7 @@ from app.schemas.gallery_schema import (
     GalleryMediaUpdate,
 )
 
-from app.storage import validate_file_size
-from app.storage import save_file, delete_file, save_voice_file
+from app.storage import save_file, delete_file, save_voice_file, from app.storage import get_file_size
 
 
 router = APIRouter(prefix="/gallery", tags=["Galleries"])
@@ -378,13 +377,14 @@ async def upload_media_voice_note(
         MediaFile.id == media_id,
         MediaFile.gallery_id == gallery_id
     ).first()
-
     if not media:
         raise HTTPException(status_code=404)
 
     event = gallery.event
 
-    # ✅ Upload voice note
+    # ✅ Measure size
+    file_size = get_file_size(file)
+
     url = save_voice_file(
         user_id=str(current_user.id),
         profile_id=str(event.profile_id),
@@ -395,15 +395,14 @@ async def upload_media_voice_note(
         upload=file,
     )
 
-    # ✅ Delete old one
     if media.voice_note_path:
         delete_file(media.voice_note_path)
 
     media.voice_note_path = url
+    media.voice_note_size = file_size  # ✅ IMPORTANT
     db.commit()
 
     return {"path": url, "success": True}
-
 # ==========================================================
 # DELETE MEDIA-LEVEL VOICE NOTE
 # ==========================================================
@@ -426,17 +425,14 @@ async def delete_media_voice_note(
         MediaFile.id == media_id,
         MediaFile.gallery_id == gallery_id
     ).first()
-
     if not media:
         raise HTTPException(status_code=404)
 
-    if not media.voice_note_path:
-        return {"message": "No media voice note set"}
-
-    # ✅ Delete from Supabase
-    delete_file(media.voice_note_path)
+    if media.voice_note_path:
+        delete_file(media.voice_note_path)
 
     media.voice_note_path = None
+    media.voice_note_size = None  # ✅ IMPORTANT
     db.commit()
 
     return {"message": "Media voice note deleted", "success": True}
@@ -469,17 +465,12 @@ async def upload_gallery_media(
     if not is_video and ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    # ✅ Supabase folder
+    # ✅ Measure size (for pricing)
+    file_size = get_file_size(file)
+
     folder = f"users/{user_id}/profiles/{profile_id}/events/{event.id}/galleries/{gallery_id}/original"
 
-    # ✅ Upload file
     file_url = save_file(folder, file)
-
-    thumb_url = None
-    duration_seconds = None
-
-    # (Thumbnail generation skipped for now on Supabase —
-    # we can add later if needed)
 
     last = (
         db.query(MediaFile)
@@ -497,11 +488,10 @@ async def upload_gallery_media(
         file_path=file_url,
         file_type="video" if is_video else "image",
         caption=caption,
-        thumbnail_path=thumb_url,
         order_index=next_index,
-        duration_seconds=duration_seconds,
         uploaded_at=datetime.utcnow(),
         original_scope="gallery",
+        file_size=file_size,  # ✅ IMPORTANT
     )
 
     db.add(media)
@@ -531,34 +521,35 @@ async def replace_gallery_media(
         MediaFile.id == media_id,
         MediaFile.gallery_id == gallery_id
     ).first()
-
     if not media:
         raise HTTPException(status_code=404)
 
-    # ✅ Delete old file + thumb
+    # ✅ Delete old files
     delete_file(media.file_path)
     if media.thumbnail_path:
         delete_file(media.thumbnail_path)
 
     ext = os.path.splitext(file.filename)[1].lower()
-    is_video = ext in {".mp4", ".mov"}
+    is_video = ext in {".mp4", ".mov", ".avi", ".mkv", ".wmv"}
+
+    # ✅ Measure size
+    file_size = get_file_size(file)
 
     folder = f"users/{current_user.id}/profiles/{gallery.event.profile_id}/events/{gallery.event_id}/galleries/{gallery_id}/original"
 
-    # ✅ Upload replacement
     new_url = save_file(folder, file)
 
     media.file_path = new_url
     media.file_type = "video" if is_video else "image"
     media.thumbnail_path = None
     media.duration_seconds = None
+    media.file_size = file_size  # ✅ IMPORTANT
     media.uploaded_at = datetime.utcnow()
 
     db.commit()
     db.refresh(media)
 
     return GalleryMediaOut.from_orm(media)
-
 # =====================================================================
 # UPDATE MEDIA CAPTION
 # =====================================================================
@@ -673,14 +664,16 @@ async def upload_gallery_voice_note(
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
     if not owns_event(current_user.id, gallery.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
     event = gallery.event
 
-    # ✅ Upload to Supabase
+    # ✅ Measure size
+    file_size = get_file_size(file)
+
     url = save_voice_file(
         user_id=str(current_user.id),
         profile_id=str(event.profile_id),
@@ -690,11 +683,11 @@ async def upload_gallery_voice_note(
         upload=file,
     )
 
-    # ✅ Delete old voice note
     if gallery.voice_note_path:
         delete_file(gallery.voice_note_path)
 
     gallery.voice_note_path = url
+    gallery.voice_note_size = file_size  # ✅ IMPORTANT
     db.commit()
 
     return {"path": url, "success": True}
@@ -711,18 +704,16 @@ async def delete_gallery_voice_note(
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
-        raise HTTPException(status_code=404, detail="Gallery not found")
+        raise HTTPException(status_code=404)
 
     if not owns_event(current_user.id, gallery.event_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+        raise HTTPException(status_code=403)
 
-    if not gallery.voice_note_path:
-        return {"message": "No gallery voice note set"}
-
-    # ✅ Delete from Supabase
-    delete_file(gallery.voice_note_path)
+    if gallery.voice_note_path:
+        delete_file(gallery.voice_note_path)
 
     gallery.voice_note_path = None
+    gallery.voice_note_size = None  # ✅ IMPORTANT
     db.commit()
 
     return {"message": "Gallery voice note deleted", "success": True}

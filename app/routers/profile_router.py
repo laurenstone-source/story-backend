@@ -38,7 +38,7 @@ from app.schemas.profile_schema import (
     ProfileOut
 )
 
-from app.storage import save_voice_file
+from app.storage import save_voice_file,save_file, delete_file,get_file_size
 
 
 router = APIRouter(prefix="/profile", tags=["Profiles"])
@@ -293,7 +293,7 @@ def update_biography(
     return {**profile.__dict__, **urls}
 
 
-from app.storage import save_file, delete_file
+
 # ---------------------------------------------------------------------
 # UPLOAD pHOTO
 # ---------------------------------------------------------------------
@@ -306,23 +306,22 @@ async def upload_profile_photo(
     current_user: User = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
-
     if not profile:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="Not authorised")
 
-    # Validate extension (keep this!)
+    # Extension check only (no size limits)
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        raise HTTPException(status_code=400)
+        raise HTTPException(status_code=400, detail="Invalid image format")
 
-    # Upload to storage backend
+    file_size = get_file_size(file)
+
     folder = f"users/{current_user.id}/profiles/{profile_id}/profile-photo"
     url = save_file(folder, file)
 
-    # Update existing media record
     if profile.profile_picture_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == profile.profile_picture_media_id
@@ -330,11 +329,10 @@ async def upload_profile_photo(
 
         if media:
             delete_file(media.file_path)
-
             media.file_path = url
+            media.file_size = file_size
             media.uploaded_at = datetime.utcnow()
             db.commit()
-
     else:
         media = MediaFile(
             user_id=current_user.id,
@@ -342,8 +340,8 @@ async def upload_profile_photo(
             file_path=url,
             file_type="image",
             original_scope="profile",
+            file_size=file_size,
         )
-
         db.add(media)
         db.commit()
         db.refresh(media)
@@ -354,10 +352,9 @@ async def upload_profile_photo(
     return {
         "id": media.id,
         "file_path": media.file_path,
+        "file_size": media.file_size,
         "scope": "profile",
-    }
-
-# ---------------------------------------------------------------------
+    }# ---------------------------------------------------------------------
 # UPLOAD / UPDATE PROFILE VIDEO (WITH THUMBNAIL)
 # ---------------------------------------------------------------------
 import subprocess
@@ -390,23 +387,21 @@ async def upload_profile_video(
     current_user: User = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
-
     if not profile:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".mp4", ".mov", ".m4v"}:
-        raise HTTPException(status_code=400)
+        raise HTTPException(status_code=400, detail="Invalid video format")
+
+    file_size = get_file_size(file)
 
     folder = f"users/{current_user.id}/profiles/{profile_id}/profile-video"
-
-    # Upload video to Supabase
     url = save_file(folder, file)
 
-    # Update existing record
     if profile.profile_video_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == profile.profile_video_media_id
@@ -414,11 +409,10 @@ async def upload_profile_video(
 
         if media:
             delete_file(media.file_path)
-
             media.file_path = url
+            media.file_size = file_size
             media.uploaded_at = datetime.utcnow()
             db.commit()
-
     else:
         media = MediaFile(
             user_id=current_user.id,
@@ -426,8 +420,8 @@ async def upload_profile_video(
             file_path=url,
             file_type="video",
             original_scope="profile",
+            file_size=file_size,
         )
-
         db.add(media)
         db.commit()
         db.refresh(media)
@@ -438,16 +432,14 @@ async def upload_profile_video(
     return {
         "id": media.id,
         "file_path": media.file_path,
+        "file_size": media.file_size,
         "file_type": "video",
         "scope": "profile",
     }
-    # -------------------------------------------------
-    #
+# -------------------------------------------------
 # ---------------------------------------------------------------------
 # UPLOAD PROFILE AUDIO (Voice note)
 # ---------------------------------------------------------------------
-from app.storage import save_file, delete_file
-
 @router.post("/{profile_id}/voice-note")
 async def upload_profile_voice_note(
     profile_id: str,
@@ -458,24 +450,40 @@ async def upload_profile_voice_note(
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     if profile.user_id != current_user.id:
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail="Not authorised")
 
-    folder = f"users/{current_user.id}/profiles/{profile_id}/voice"
+    # Extension sanity check only
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in {".m4a", ".aac", ".mp3", ".wav"}:
+        raise HTTPException(status_code=400, detail="Invalid audio format")
 
-    # Upload new voice note
-    url = save_file(folder, file)
+    # ✅ Measure file size (for pricing / usage later)
+    file_size = get_file_size(file)
 
-    # Delete old one if exists
+    # Upload via shared storage helper
+    url = save_voice_file(
+        user_id=str(current_user.id),
+        profile_id=profile_id,
+        scope="profile",
+        upload=file,
+    )
+
+    # Remove old voice note if it exists
     if profile.voice_note_path:
         delete_file(profile.voice_note_path)
 
+    # Persist new reference + size
     profile.voice_note_path = url
+    profile.voice_note_size = file_size  # recommended column
     db.commit()
 
-    return {"path": url}
+    return {
+        "path": url,
+        "file_size": file_size,
+    }
 # ---------------------------------------------------------------------
 # DELETE PROFILE Photo
 # ---------------------------------------------------------------------
@@ -561,9 +569,10 @@ async def delete_profile_voice_note(
         raise HTTPException(status_code=403)
 
     if profile.voice_note_path:
-        delete_file(profile.voice_note_path)
+    delete_file(profile.voice_note_path)
 
     profile.voice_note_path = None
+    profile.voice_note_size = None  # ← important
     db.commit()
 
     return {"message": "Voice note deleted"}

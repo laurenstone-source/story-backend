@@ -27,9 +27,8 @@ from app.models.media import MediaFile
 from app.models.profile import Profile
 from app.models.user import User
 
-from app.storage import save_file, delete_file, save_voice_file, validate_file_size
+from app.storage import save_file, delete_file, save_voice_file, get_file_size
 
-from app.storage import save_voice_file
 
 router = APIRouter(prefix="/timeline", tags=["Timeline Events"])
 
@@ -191,43 +190,32 @@ async def upload_timeline_main_media(
     if not owns_profile(current_user.id, event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    ok, msg = validate_file_size(file)
-    if not ok:
-        raise HTTPException(status_code=400, detail=msg)
-
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
-    # ✅ Supabase folder path (string)
-    folder = f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/main"
+    file_size = get_file_size(file)
 
-    # ✅ Upload new image
+    folder = (
+        f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/main"
+    )
+
     url = save_file(folder, file)
 
-    # -------------------------------------------------
-    # REPLACE EXISTING IMAGE
-    # -------------------------------------------------
     if event.main_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == event.main_media_id
         ).first()
 
         if media:
-            # ✅ Delete old Supabase file
             delete_file(media.file_path)
-
-            # Update record
             media.file_path = url
+            media.file_size = file_size
             media.uploaded_at = datetime.utcnow()
             db.commit()
             db.refresh(media)
-
             return MediaFileOut.from_orm(media)
 
-    # -------------------------------------------------
-    # FIRST UPLOAD
-    # -------------------------------------------------
     media = MediaFile(
         user_id=current_user.id,
         profile_id=event.profile_id,
@@ -235,6 +223,7 @@ async def upload_timeline_main_media(
         file_path=url,
         file_type="image",
         original_scope="event",
+        file_size=file_size,
     )
 
     db.add(media)
@@ -245,7 +234,6 @@ async def upload_timeline_main_media(
     db.commit()
 
     return MediaFileOut.from_orm(media)
-
 # =====================================================================
 # DELETE Photo
 # =====================================================================
@@ -271,9 +259,7 @@ def delete_event_main_media(
     ).first()
 
     if media:
-        # ✅ Delete from Supabase
         delete_file(media.file_path)
-
         db.delete(media)
 
     event.main_media_id = None
@@ -297,7 +283,6 @@ def delete_event(
     if not owns_profile(current_user.id, event.profile_id, db):
         raise HTTPException(status_code=403)
 
-    # ✅ Delete main media
     if event.main_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == event.main_media_id
@@ -307,7 +292,6 @@ def delete_event(
             delete_file(media.file_path)
             db.delete(media)
 
-    # ✅ Delete voice note
     if event.audio_url:
         delete_file(event.audio_url)
 
@@ -315,7 +299,6 @@ def delete_event(
     db.commit()
 
     return {"status": "success"}
-
 
 # =====================================================================
 # UPLOAD EVENT VOICE NOTE (Unified)
@@ -335,21 +318,29 @@ async def upload_event_voice_note(
     if not owns_profile(current_user.id, event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    folder = f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/voice"
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in {".m4a", ".aac", ".mp3", ".wav"}:
+        raise HTTPException(status_code=400, detail="Invalid audio format")
 
-    # ✅ Upload new audio
-    url = save_file(folder, file)
+    file_size = get_file_size(file)
 
-    # ✅ Delete old audio if exists
+    url = save_voice_file(
+        user_id=str(current_user.id),
+        profile_id=str(event.profile_id),
+        scope="event",
+        upload=file,
+        event_id=event.id,
+    )
+
     if event.audio_url:
         delete_file(event.audio_url)
 
     event.audio_url = url
+    event.audio_size = file_size  # recommended column
     db.commit()
     db.refresh(event)
 
-    return {"path": url, "success": True}
-
+    return {"path": url, "file_size": file_size, "success": True}
 # =====================================================================
 # DELETE EVENT VOICE NOTE
 # =====================================================================
@@ -371,10 +362,10 @@ async def delete_event_voice_note(
         delete_file(event.audio_url)
 
     event.audio_url = None
+    event.audio_size = None
     db.commit()
 
     return {"message": "Event audio deleted"}
-
 # =====================================================================
 # UPDATE EVENT STORY
 # =====================================================================
