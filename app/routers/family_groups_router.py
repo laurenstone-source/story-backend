@@ -36,13 +36,7 @@ from app.core.profile_access import get_current_user_profile
 
 router = APIRouter(prefix="/family-groups", tags=["Family Groups"])
 
-from app.storage import save_file
 
-url = save_file(
-    folder,
-    file,
-    filename,
-)
 
 
 # --------------------------------------------------
