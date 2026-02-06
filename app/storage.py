@@ -124,48 +124,23 @@ def delete_file(path: str):
     # LOCAL DELETE
     # -----------------------------
     if settings.STORAGE_BACKEND == "local":
-
         fs_path = path.lstrip("/").replace("/", os.sep)
         if os.path.exists(fs_path):
             try:
                 os.remove(fs_path)
-            except:
+            except Exception:
                 pass
 
     # -----------------------------
     # SUPABASE DELETE
     # -----------------------------
     elif settings.STORAGE_BACKEND == "supabase":
-
-    storage_key = f"{folder}/{filename}"
-
-    file.file.seek(0)
-    contents = file.file.read()
-
-    if not contents:
-        raise RuntimeError("File is empty – nothing to upload")
-
-    res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
-        storage_key,
-        contents,
-        {
-            "content-type": file.content_type or "application/octet-stream",
-            "upsert": True,
-        },
-    )
-
-    # 🔴 HARD FAIL if Supabase didn't accept it
-    if not res:
-        raise RuntimeError("Supabase upload returned no response")
-
-    # Optional but VERY useful while debugging
-    print("Supabase upload OK:", storage_key)
-
-    return supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(
-        storage_key
-    )
-
-
+        key = extract_storage_key(path)
+        try:
+            supabase.storage.from_(settings.SUPABASE_BUCKET).remove([key])
+            print("Supabase delete OK:", key)
+        except Exception as e:
+            print("Supabase delete failed:", e)
 # ==========================================================
 # VOICE NOTE SAVE
 # ==========================================================
