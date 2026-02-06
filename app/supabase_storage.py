@@ -1,24 +1,16 @@
 import os
 from supabase import create_client
 
-# Supabase client (created once)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL:
+    raise RuntimeError("SUPABASE_URL is missing")
+
+if not SUPABASE_SERVICE_ROLE_KEY:
+    raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is missing")
+
 supabase = create_client(
-    os.environ["https://blqddscofxulsffddowu.supabase.co"],
-    os.environ["sb_publishable_oUq-zVmPeGFTY8L9x0by1w_QN0RcaxM"],
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
 )
-
-BUCKET = "media"
-
-
-def upload_file(contents: bytes, path: str, content_type: str) -> str:
-    """
-    Uploads bytes to Supabase Storage and returns the public URL.
-    """
-
-    supabase.storage.from_(BUCKET).upload(
-        path,
-        contents,
-        {"content-type": content_type},
-    )
-
-    return supabase.storage.from_(BUCKET).get_public_url(path)

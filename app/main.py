@@ -118,3 +118,7 @@ app.include_router(gallery_router.router)
 @app.get("/")
 def root():
     return {"message": "Story API is running!"}
+from app.config import settings
+print("STORAGE_BACKEND:", settings.STORAGE_BACKEND)
+print("SUPABASE_URL:", settings.SUPABASE_URL)
+print("SUPABASE_BUCKET:", settings.SUPABASE_BUCKET)

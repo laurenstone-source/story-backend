@@ -58,16 +58,12 @@ class Settings:
         "./media"   # Default for dev
     )
 
-    # -------------------------------------------------------
-    # Supabase Storage (only used if STORAGE_BACKEND=supabase)
-    # -------------------------------------------------------
-    SUPABASE_URL: str = os.getenv("https://blqddscofxulsffddowu.supabase.co", "")
-    SUPABASE_SERVICE_KEY: str = os.getenv("sb_publishable_oUq-zVmPeGFTY8L9x0by1w_QN0RcaxM", "")
-
-    SUPABASE_BUCKET: str = os.getenv(
-        "SUPABASE_BUCKET",
-        "media"
-    )
+   # -------------------------------------------------------
+# Supabase Storage
+# -------------------------------------------------------
+SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_BUCKET: str = os.getenv("SUPABASE_BUCKET", "media")
 
 # Single instance that is imported everywhere
 settings = Settings()
