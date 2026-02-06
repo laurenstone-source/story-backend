@@ -142,7 +142,7 @@ def upload_comment_media(
     # -------------------------------------------------
     # Upload new file
     # -------------------------------------------------
-    media_url = save_file_to_folder(
+    media_url = save_file(
         folder,
         file,
         new_filename=filename,
