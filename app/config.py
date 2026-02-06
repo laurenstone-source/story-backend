@@ -52,18 +52,18 @@ class Settings:
     # -------------------------------------------------------
     STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "local")
 
-    # Local media folder
     LOCAL_MEDIA_PATH: str = os.getenv(
         "LOCAL_MEDIA_PATH",
-        "./media"   # Default for dev
+        "./media"
     )
 
-   # -------------------------------------------------------
-# Supabase Storage
-# -------------------------------------------------------
-SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_BUCKET: str = os.getenv("SUPABASE_BUCKET", "media")
+    # -------------------------------------------------------
+    # Supabase Storage
+    # -------------------------------------------------------
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_BUCKET: str = os.getenv("SUPABASE_BUCKET", "media")
 
-# Single instance that is imported everywhere
+
+# ✅ This stays OUTSIDE the class
 settings = Settings()
