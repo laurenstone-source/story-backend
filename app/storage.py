@@ -59,11 +59,7 @@ def extract_storage_key(url_or_path: str) -> str:
     return url_or_path.strip("/")
 
 
-# ==========================================================
-# SAVE FILE (LOCAL or SUPABASE)
-# ==========================================================
 def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str:
-
     folder = folder.strip("/")
 
     if not filename:
@@ -73,7 +69,6 @@ def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str
     # LOCAL STORAGE
     # -----------------------------
     if settings.STORAGE_BACKEND == "local":
-
         folder_path = Path(settings.LOCAL_MEDIA_PATH) / folder
         folder_path.mkdir(parents=True, exist_ok=True)
 
@@ -89,21 +84,27 @@ def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str
     # SUPABASE STORAGE
     # -----------------------------
     elif settings.STORAGE_BACKEND == "supabase":
-
         storage_key = f"{folder}/{filename}"
 
         file.file.seek(0)
         contents = file.file.read()
-        file.file.seek(0)
 
-        supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
+        if not contents:
+            raise RuntimeError("File is empty – nothing to upload")
+
+        res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
             storage_key,
             contents,
             {
-                "content-type": file.content_type,
-                "x-upsert": "true",
+                "content-type": file.content_type or "application/octet-stream",
+                "upsert": True,
             },
         )
+
+        if not res:
+            raise RuntimeError("Supabase upload failed (no response)")
+
+        print("Supabase upload OK:", storage_key)
 
         return supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(
             storage_key
@@ -111,7 +112,6 @@ def save_file(folder: str, file: UploadFile, filename: str | None = None) -> str
 
     else:
         raise ValueError("Invalid STORAGE_BACKEND")
-
 
 # ==========================================================
 # DELETE FILE (LOCAL or SUPABASE)
