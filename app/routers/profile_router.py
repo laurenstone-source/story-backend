@@ -569,7 +569,7 @@ async def delete_profile_voice_note(
         raise HTTPException(status_code=403)
 
     if profile.voice_note_path:
-    delete_file(profile.voice_note_path)
+     delete_file(profile.voice_note_path)
 
     profile.voice_note_path = None
     profile.voice_note_size = None  # ← important
