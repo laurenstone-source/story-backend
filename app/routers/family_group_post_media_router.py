@@ -81,12 +81,12 @@ def upload_post_media(
 
     if post.status != "visible":
         raise HTTPException(400, "Cannot add media to hidden/deleted post")
-     # -------------------------------------------------
-     # Validate file size
-     # -------------------------------------------------
-     ok, err = validate_file_size(file, max_mb=5)
-     if not ok:
-      raise HTTPException(status_code=413, detail=err)
+    # -------------------------------------------------
+    # Validate file size
+    # -------------------------------------------------
+    ok, err = validate_file_size(file, max_mb=5)
+    if not ok:
+        raise HTTPException(status_code=413, detail=err)
 
     # -------------------------------------------------
     # Detect media type
