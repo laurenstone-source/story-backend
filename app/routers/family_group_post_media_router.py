@@ -15,7 +15,7 @@ from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post_media import FamilyGroupPostMedia
 
 from app.storage import validate_file_size, delete_file, save_file
-media_url = save_file(folder, file, filename)
+
 
 router = APIRouter(prefix="/family-groups", tags=["Group Post Media"])
 
