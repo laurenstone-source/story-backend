@@ -1,12 +1,15 @@
 # app/schemas/media_schema.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from datetime import datetime
 from typing import Optional
 
 # -----------------------------------------------------
 # UNIVERSAL MEDIA FILE OUTPUT (generic media object)
 # -----------------------------------------------------
+from app.utils.urls import absolute_media_url
+
+
 class MediaFileOut(BaseModel):
     id: int
     file_path: str
@@ -16,10 +19,11 @@ class MediaFileOut(BaseModel):
     thumbnail_path: Optional[str] = None
     uploaded_at: Optional[datetime] = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    @field_serializer("file_path", "voice_note_path", "thumbnail_path")
+    def absolutise_urls(self, v):
+        return absolute_media_url(v)
 
+    model_config = {"from_attributes": True}
 
 # -----------------------------------------------------
 # EVENT MEDIA SCHEMA
