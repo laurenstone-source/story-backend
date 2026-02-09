@@ -62,7 +62,12 @@ def serialize_post(
 
     created_at=post.created_at,
     updated_at=post.updated_at,
-    last_activity_at=post.last_activity_at,  # ✅ ADD THIS
+    last_activity_at=post.last_activity_at,
+    comment_count=len([
+        c for c in post.comments
+        if c.status == "visible"
+    ]),
+    media_url=(post.media.media_path if post.media else None),  # ✅ ADD THIS
 
     media_url=(post.media.media_path if post.media else None),
     media_type=(post.media.media_type if post.media else None),
@@ -91,7 +96,10 @@ def list_group_posts(
 
     posts = (
         db.query(FamilyGroupPost)
-        .options(joinedload(FamilyGroupPost.media))
+        .options(
+            joinedload(FamilyGroupPost.media),
+            joinedload(FamilyGroupPost.comments),  # ✅ ADD THIS
+        )
         .filter(
             FamilyGroupPost.group_id == group_id,
             FamilyGroupPost.status != "hidden_by_system",
