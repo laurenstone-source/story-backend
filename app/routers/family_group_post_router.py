@@ -46,37 +46,40 @@ def serialize_post(
     member: FamilyGroupMember,
 ):
     return GroupPostOut(
-    id=post.id,
-    group_id=post.group_id,
-    author_profile_id=post.author_profile_id,
+        id=post.id,
+        group_id=post.group_id,
+        author_profile_id=post.author_profile_id,
 
-    author_name=post.author.full_name if post.author else None,
-    author_profile_picture=(
-        post.author.profile_picture.file_path
-        if post.author and post.author.profile_picture
-        else None
-    ),
+        author_name=post.author.full_name if post.author else None,
+        author_profile_picture=(
+            post.author.profile_picture.file_path
+            if post.author and post.author.profile_picture
+            else None
+        ),
 
-    content_text=post.content_text,
-    status=post.status,
+        content_text=post.content_text,
+        status=post.status,
 
-    created_at=post.created_at,
-    updated_at=post.updated_at,
-    last_activity_at=post.last_activity_at,
-    comment_count=len([
-        c for c in post.comments
-        if c.status == "visible"
-    ]),
-    media_url=(post.media.media_path if post.media else None),  # ✅ ADD THIS
+        created_at=post.created_at,
+        updated_at=post.updated_at,
+        last_activity_at=post.last_activity_at,
 
-    media_url=(post.media.media_path if post.media else None),
-    media_type=(post.media.media_type if post.media else None),
+        comment_count=len([
+            c for c in post.comments
+            if c.status == "visible"
+        ]),
 
-    is_hidden=post.status != "visible",
+        media_url=(post.media.media_path if post.media else None),
+        media_type=(post.media.media_type if post.media else None),
 
-    can_edit=post.author_profile_id == me.id,
-    can_delete=(post.author_profile_id == me.id or member.role == "admin"),
-)
+        is_hidden=post.status != "visible",
+
+        can_edit=post.author_profile_id == me.id,
+        can_delete=(
+            post.author_profile_id == me.id
+            or member.role == "admin"
+        ),
+    )
 
 
 # --------------------------------------------------
