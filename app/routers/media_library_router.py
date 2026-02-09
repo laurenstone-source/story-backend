@@ -179,7 +179,7 @@ def get_media_library(
         )
 
         for e in events:
-            if not e.voice_note_path:
+            if not e.audio_url:
                 continue
 
             title = _safe_name(e.title, f"Event {e.id}")
@@ -189,7 +189,7 @@ def get_media_library(
                 "event_id": e.id,
                 "profile_id": my_profile.id,
 
-                "file_path": _abs(e.voice_note_path),
+                "file_path": _abs(e.audio_url),
                 "file_type": "audio",
 
                 "label": "Event voice note",
