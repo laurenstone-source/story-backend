@@ -99,11 +99,11 @@ def upload_comment_media(
         raise HTTPException(400, "Cannot add media to hidden/deleted comment")
 
     # -------------------------------------------------
-    # Validate file size
-    # -------------------------------------------------
-    ok, err = validate_file_size(file)
-    if not ok:
-        raise HTTPException(400, err)
+# Validate file size
+# -------------------------------------------------
+ok, err = validate_file_size(file, max_mb=5)
+if not ok:
+    raise HTTPException(status_code=413, detail=err)
 
     # -------------------------------------------------
     # Detect media type
