@@ -19,6 +19,7 @@ class GroupPostOut(BaseModel):
     status: str    # 👇 UI permissions
     created_at: datetime
     updated_at: datetime
+    comment_count: int
     can_edit: bool
     can_delete: bool
     is_hidden: bool
