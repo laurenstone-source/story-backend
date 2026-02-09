@@ -84,7 +84,7 @@ def upload_comment_media(
     ).first()
 
     if not comment:
-        raise HTTPException(404, "Comment not found")
+        raise HTTPException(status_code=404, detail="Comment not found")
 
     post = comment.post
 
@@ -93,17 +93,17 @@ def upload_comment_media(
 
     # Only author can upload/replace
     if comment.author_profile_id != me.id:
-        raise HTTPException(403, "Only the author can add media")
+        raise HTTPException(status_code=403, detail="Only the author can add media")
 
     if comment.status != "visible":
-        raise HTTPException(400, "Cannot add media to hidden/deleted comment")
+        raise HTTPException(status_code=400, detail="Cannot add media to hidden/deleted comment")
 
     # -------------------------------------------------
-# Validate file size
-# -------------------------------------------------
-ok, err = validate_file_size(file, max_mb=5)
-if not ok:
-    raise HTTPException(status_code=413, detail=err)
+    # Validate file size
+    # -------------------------------------------------
+    ok, err = validate_file_size(file, max_mb=5)
+    if not ok:
+        raise HTTPException(status_code=413, detail=err)
 
     # -------------------------------------------------
     # Detect media type
@@ -171,7 +171,6 @@ if not ok:
         "media_type": media_type,
         "success": True,
     }
-
 
 # =========================================================
 # DELETE COMMENT MEDIA (Supabase + DB)
