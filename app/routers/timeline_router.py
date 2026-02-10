@@ -175,6 +175,14 @@ def get_profile_events(
 # =====================================================================
 # UPLOAD / REPLACE MAIN EVENT MEDIA (Image or Video)
 # =====================================================================
+import subprocess
+import tempfile
+import requests
+from pathlib import Path
+from app.config import settings
+from app.supabase_client import supabase
+
+
 @router.post("/{event_id}/upload-main", response_model=MediaFileOut)
 async def upload_timeline_main_media(
     event_id: int,
@@ -204,11 +212,74 @@ async def upload_timeline_main_media(
         f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/main"
     )
 
+    # ---------------------------------------------------------
+    # 1️⃣ SAVE ORIGINAL FILE TO SUPABASE
+    # ---------------------------------------------------------
     url = save_file(folder, file)
-
     file_type = "image" if ext in allowed_image_types else "video"
 
-    # Replace existing media if present
+    thumbnail_url = None
+
+    # ---------------------------------------------------------
+    # 2️⃣ IF VIDEO → GENERATE THUMBNAIL
+    # ---------------------------------------------------------
+    if file_type == "video":
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
+
+                # Download video from Supabase public URL
+                video_path = tmpdir / "video.mp4"
+
+                r = requests.get(url)
+                r.raise_for_status()
+
+                with open(video_path, "wb") as f:
+                    f.write(r.content)
+
+                # Generate thumbnail locally
+                thumb_path = tmpdir / "thumb.jpg"
+
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(video_path),
+                        "-ss",
+                        "00:00:01.000",
+                        "-vframes",
+                        "1",
+                        str(thumb_path),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+
+                # Upload thumbnail to Supabase
+                thumb_filename = f"thumb_{uuid.uuid4()}.jpg"
+                thumb_key = f"{folder}/{thumb_filename}"
+
+                with open(thumb_path, "rb") as f:
+                    supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
+                        thumb_key,
+                        f.read(),
+                        {"content-type": "image/jpeg"},
+                    )
+
+                thumbnail_url = (
+                    supabase.storage
+                    .from_(settings.SUPABASE_BUCKET)
+                    .get_public_url(thumb_key)
+                )
+
+        except Exception as e:
+            print("Thumbnail generation failed:", e)
+
+    # ---------------------------------------------------------
+    # 3️⃣ REPLACE EXISTING MEDIA
+    # ---------------------------------------------------------
     if event.main_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == event.main_media_id
@@ -216,21 +287,30 @@ async def upload_timeline_main_media(
 
         if media:
             delete_file(media.file_path)
+
+            if media.thumbnail_path:
+                delete_file(media.thumbnail_path)
+
             media.file_path = url
             media.file_type = file_type
             media.file_size = file_size
+            media.thumbnail_path = thumbnail_url
             media.uploaded_at = datetime.utcnow()
+
             db.commit()
             db.refresh(media)
             return MediaFileOut.from_orm(media)
 
-    # Create new media
+    # ---------------------------------------------------------
+    # 4️⃣ CREATE NEW MEDIA
+    # ---------------------------------------------------------
     media = MediaFile(
         user_id=current_user.id,
         profile_id=event.profile_id,
         event_id=event.id,
         file_path=url,
         file_type=file_type,
+        thumbnail_path=thumbnail_url,
         original_scope="event",
         file_size=file_size,
     )
