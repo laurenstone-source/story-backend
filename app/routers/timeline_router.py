@@ -59,16 +59,16 @@ def add_event(
             status_code=400,
             detail="End date cannot be before start date"
         )
-event = TimelineEvent(
-    profile_id=data.profile_id,
-    title=data.title,
-    description=data.description,
-    item_type=data.item_type,  # ✅ NEW
-    start_date=data.start_date,
-    end_date=data.end_date,
-    date_precision=data.date_precision,
-    order_index=data.order_index,
-)
+     event = TimelineEvent(
+         profile_id=data.profile_id,
+         title=data.title,
+         description=data.description,
+         item_type=data.item_type,  # ✅ NEW
+         start_date=data.start_date,
+         end_date=data.end_date,
+         date_precision=data.date_precision,
+         order_index=data.order_index,
+     )
 
     db.add(event)
     db.commit()
