@@ -59,7 +59,7 @@ def add_event(
             status_code=400,
             detail="End date cannot be before start date"
         )
-     event = TimelineEvent(
+    event = TimelineEvent(
          profile_id=data.profile_id,
          title=data.title,
          description=data.description,
