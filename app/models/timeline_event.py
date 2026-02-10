@@ -10,10 +10,10 @@ class TimelineEvent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     profile_id = Column(String, ForeignKey("profiles.id"), nullable=False)
-
+    # NEW: distinguish life_event vs message
     title = Column(String, nullable=True)
     description = Column(String, nullable=True)
-
+    item_type = Column(String, nullable=False, default="life_event")
     # ----------------------------------------------------------
     # NEW FIELD: Long-form event story text
     # ----------------------------------------------------------

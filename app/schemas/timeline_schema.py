@@ -11,7 +11,7 @@ from .media_schema import MediaFileOut
 class TimelineEventBase(BaseModel):
     title: str
     description: Optional[str] = None
-
+    item_type: Literal["life_event", "message"] = "life_event"
     # ✅ NEW DATE SYSTEM
     start_date: date
     end_date: Optional[date] = None
@@ -33,7 +33,7 @@ class TimelineEventCreate(TimelineEventBase):
 class TimelineEventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-
+    item_type: Optional[Literal["life_event", "message"]] = None
     # ✅ NEW DATE SYSTEM
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -51,7 +51,7 @@ class TimelineEventOut(BaseModel):
 
     title: str
     description: Optional[str] = None
-
+    item_type: Literal["life_event", "message"]
     # ✅ NEW DATE SYSTEM
     start_date: date
     end_date: Optional[date] = None
