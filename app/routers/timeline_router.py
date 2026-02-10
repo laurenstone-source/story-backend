@@ -1,6 +1,13 @@
 import os
 import uuid
 from datetime import datetime
+import tempfile
+import subprocess
+import requests
+from pathlib import Path
+
+from app.config import settings
+from app.supabase_client import supabase
 
 from fastapi import (
     APIRouter,
