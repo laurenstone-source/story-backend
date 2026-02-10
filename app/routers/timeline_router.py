@@ -175,12 +175,6 @@ def get_profile_events(
 # =====================================================================
 # UPLOAD / REPLACE MAIN EVENT MEDIA (Image or Video)
 # =====================================================================
-import subprocess
-import tempfile
-import requests
-from pathlib import Path
-from app.config import settings
-from app.supabase_client import supabase
 
 
 @router.post("/{event_id}/upload-main", response_model=MediaFileOut)
