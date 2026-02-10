@@ -4,6 +4,11 @@ import os
 import uuid
 import subprocess
 import json
+import tempfile
+import requests
+from pathlib import Path
+from app.supabase_client import supabase
+from app.config import settings
 from datetime import datetime
 
 from typing import List
@@ -465,13 +470,69 @@ async def upload_gallery_media(
     if not is_video and ext not in {".jpg", ".jpeg", ".png", ".webp"}:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    # ✅ Measure size (for pricing)
     file_size = get_file_size(file)
 
     folder = f"users/{user_id}/profiles/{profile_id}/events/{event.id}/galleries/{gallery_id}/original"
 
+    # 1️⃣ Upload original
     file_url = save_file(folder, file)
 
+    thumbnail_url = None
+    duration_seconds = None
+
+    # 2️⃣ If video → generate thumbnail
+    if is_video:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
+
+                video_path = tmpdir / "video.mp4"
+                thumb_path = tmpdir / "thumb.jpg"
+
+                # Download uploaded video
+                r = requests.get(file_url)
+                r.raise_for_status()
+
+                with open(video_path, "wb") as f:
+                    f.write(r.content)
+
+                # Generate thumbnail
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(video_path),
+                        "-ss",
+                        "00:00:00.500",
+                        "-vframes",
+                        "1",
+                        str(thumb_path),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+
+                # Upload thumbnail
+                thumb_filename = f"thumb_{uuid.uuid4()}.jpg"
+                thumb_key = f"{folder}/{thumb_filename}"
+
+                with open(thumb_path, "rb") as f:
+                    supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
+                        thumb_key,
+                        f.read(),
+                        {"content-type": "image/jpeg"},
+                    )
+
+                thumbnail_url = supabase.storage.from_(
+                    settings.SUPABASE_BUCKET
+                ).get_public_url(thumb_key)
+
+        except Exception as e:
+            print("Gallery thumbnail generation failed:", e)
+
+    # Get next order index
     last = (
         db.query(MediaFile)
         .filter(MediaFile.gallery_id == gallery_id)
@@ -491,7 +552,9 @@ async def upload_gallery_media(
         order_index=next_index,
         uploaded_at=datetime.utcnow(),
         original_scope="gallery",
-        file_size=file_size,  # ✅ IMPORTANT
+        file_size=file_size,
+        thumbnail_path=thumbnail_url,
+        duration_seconds=duration_seconds,
     )
 
     db.add(media)
