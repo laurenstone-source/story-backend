@@ -173,7 +173,7 @@ def get_profile_events(
 
     return events
 # =====================================================================
-# UPLOAD / REPLACE MAIN EVENT IMAGE
+# UPLOAD / REPLACE MAIN EVENT MEDIA (Image or Video)
 # =====================================================================
 @router.post("/{event_id}/upload-main", response_model=MediaFileOut)
 async def upload_timeline_main_media(
@@ -191,8 +191,12 @@ async def upload_timeline_main_media(
         raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    allowed_image_types = {".jpg", ".jpeg", ".png", ".webp"}
+    allowed_video_types = {".mp4", ".mov", ".webm"}
+
+    if ext not in allowed_image_types and ext not in allowed_video_types:
+        raise HTTPException(status_code=400, detail="Unsupported media type")
 
     file_size = get_file_size(file)
 
@@ -202,6 +206,9 @@ async def upload_timeline_main_media(
 
     url = save_file(folder, file)
 
+    file_type = "image" if ext in allowed_image_types else "video"
+
+    # Replace existing media if present
     if event.main_media_id:
         media = db.query(MediaFile).filter(
             MediaFile.id == event.main_media_id
@@ -210,18 +217,20 @@ async def upload_timeline_main_media(
         if media:
             delete_file(media.file_path)
             media.file_path = url
+            media.file_type = file_type
             media.file_size = file_size
             media.uploaded_at = datetime.utcnow()
             db.commit()
             db.refresh(media)
             return MediaFileOut.from_orm(media)
 
+    # Create new media
     media = MediaFile(
         user_id=current_user.id,
         profile_id=event.profile_id,
         event_id=event.id,
         file_path=url,
-        file_type="image",
+        file_type=file_type,
         original_scope="event",
         file_size=file_size,
     )
