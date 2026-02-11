@@ -280,38 +280,45 @@ def delete_gallery(
     if not owns_event(current_user.id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
-    # Delete all media files in gallery
-    media_items = db.query(MediaFile).filter(
-        MediaFile.gallery_id == gallery_id
-    ).all()
-
-    for m in media_items:
-        for path in [m.file_path, m.thumbnail_path, m.voice_note_path]:
-            if path:
-                try:
-                    delete_file(path)
-                except Exception as e:
-                    print("Storage delete failed:", e)
-
-        db.delete(m)
-
-    # Delete gallery-level voice note
-    if g.voice_note_path:
-        try:
-            delete_file(g.voice_note_path)
-        except Exception as e:
-            print("Gallery voice delete failed:", e)
-
-    db.delete(g)
-
     try:
+        # 🔥 BREAK circular reference FIRST
+        g.main_media_id = None
+        db.flush()
+
+        # --------------------------------------------------
+        # DELETE ALL MEDIA IN GALLERY
+        # --------------------------------------------------
+        media_items = db.query(MediaFile).filter(
+            MediaFile.gallery_id == gallery_id
+        ).all()
+
+        for m in media_items:
+            for path in [m.file_path, m.thumbnail_path, m.voice_note_path]:
+                if path:
+                    delete_file(path)
+
+            db.delete(m)
+
+        # --------------------------------------------------
+        # DELETE GALLERY VOICE NOTE
+        # --------------------------------------------------
+        if g.voice_note_path:
+            delete_file(g.voice_note_path)
+
+        # --------------------------------------------------
+        # DELETE GALLERY
+        # --------------------------------------------------
+        db.delete(g)
         db.commit()
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"DB delete failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"DB delete failed: {e}"
+        )
 
     return {"message": "Gallery deleted"}
-
 # ==========================================================
 # REORDER GALLERIES
 # ==========================================================
