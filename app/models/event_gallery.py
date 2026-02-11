@@ -52,6 +52,7 @@ class EventGallery(Base):
         foreign_keys=[main_media_id],
         uselist=False,
         lazy="joined",
+        post_update=True,
     )
 
     # --------------------------------------------------

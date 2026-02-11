@@ -53,7 +53,7 @@ class TimelineEvent(Base):
         "MediaFile",
         foreign_keys=[main_media_id],
         uselist=False,
-        passive_deletes=True
+        post_update=True
     )
 
     # ----------------------------------------------------------
