@@ -283,7 +283,7 @@ def delete_gallery(
     try:
         # 🔥 BREAK circular reference FIRST
         g.main_media_id = None
-        db.flush()
+        
 
         # --------------------------------------------------
         # DELETE ALL MEDIA IN GALLERY
