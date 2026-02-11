@@ -132,24 +132,35 @@ def delete_file(path: str):
     # LOCAL DELETE
     # -----------------------------
     if settings.STORAGE_BACKEND == "local":
-        fs_path = path.lstrip("/").replace("/", os.sep)
-        if os.path.exists(fs_path):
-            try:
+        try:
+            fs_path = path.lstrip("/").replace("/", os.sep)
+            if os.path.exists(fs_path):
                 os.remove(fs_path)
-            except Exception:
-                pass
+        except Exception as e:
+            print("Local delete failed:", e)
+        return
 
     # -----------------------------
     # SUPABASE DELETE
     # -----------------------------
-    elif settings.STORAGE_BACKEND == "supabase":
-        key = extract_storage_key(path)
+    if settings.STORAGE_BACKEND == "supabase":
         try:
-            supabase.storage.from_(settings.SUPABASE_BUCKET).remove([key])
-            print("Supabase delete OK:", key)
+            key = extract_storage_key(path)
+
+            if not key:
+                print("Delete skipped - empty key:", path)
+                return
+
+            # Supabase remove expects a list of keys
+            result = supabase.storage.from_(settings.SUPABASE_BUCKET).remove([key])
+
+            print("Supabase delete attempted:", key)
+            print("Supabase delete result:", result)
+
         except Exception as e:
             print("Supabase delete failed:", e)
-# ==========================================================
+            # DO NOT RAISE
+            # Storage failure must NEVER break DB deletion# ==========================================================
 # VOICE NOTE SAVE
 # ==========================================================
 def save_voice_file(
