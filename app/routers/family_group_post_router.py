@@ -94,7 +94,7 @@ def list_group_posts(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user["sub"]
+    me = get_current_user_profile(db, current_user["sub"])
     member = require_member(db, group_id, me.id)
 
     posts = (
