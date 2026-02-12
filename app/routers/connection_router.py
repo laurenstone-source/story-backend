@@ -368,7 +368,7 @@ def set_relationship(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user["sub"]
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     conn = (
         db.query(Connection)
