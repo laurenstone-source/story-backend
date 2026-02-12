@@ -7,8 +7,7 @@ import os
 from app.routers.profile_router import attach_media_urls
 from app.utils.urls import absolute_media_url
 from app.database import SessionLocal
-from app.auth import get_current_user
-from app.models.user import User
+from app.auth.supabase_auth import get_current_user
 from app.models.profile import Profile
 
 from app.models.family_group import FamilyGroup
@@ -91,11 +90,11 @@ def upload_group_image(
     group_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.storage import save_file, delete_file
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
 
     if group.is_archived:
@@ -119,7 +118,7 @@ def upload_group_image(
     # -------------------------------------------------
     # Upload new image
     # -------------------------------------------------
-    folder = f"users/{current_user.id}/profiles/{me.id}/groups/{group.id}"
+    folder = f"users/{current_user["sub"]}/profiles/{me.id}/groups/{group.id}"
     filename = f"group_{uuid.uuid4()}{ext}"
 
     url = save_file(folder, file, filename)
@@ -146,9 +145,9 @@ def upload_group_image(
 def create_family_group(
     payload: FamilyGroupCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    profile = get_current_user_profile(db, current_user.id)
+    profile = get_current_user_profile(db, current_user["sub"])
 
     group = FamilyGroup(
         id=str(uuid.uuid4()),
@@ -175,7 +174,7 @@ def create_family_group(
 def search_groups(
     query: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     q = (query or "").strip()
     if len(q) < 2:
@@ -202,9 +201,9 @@ def rename_family_group(
     group_id: str,
     payload: FamilyGroupRename,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = db.query(FamilyGroup).filter(FamilyGroup.id == group_id).first()
     if not group:
         raise HTTPException(404, "Family group not found")
@@ -229,9 +228,9 @@ def rename_family_group(
 def delete_family_group(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
 
     require_admin(db, group.id, me.id)
@@ -251,9 +250,9 @@ def delete_family_group(
 @router.get("/mine")
 def my_family_groups(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     rows = (
         db.query(FamilyGroup, FamilyGroupMember)
@@ -284,9 +283,9 @@ def my_family_groups(
 def get_family_group_detail(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
     require_member(db, group.id, me.id)
 
@@ -343,12 +342,12 @@ def remove_group_member(
     group_id: str,
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.models.family_group_post import FamilyGroupPost
     from app.models.family_group_post_comment import FamilyGroupPostComment
 
-    admin = get_current_user_profile(db, current_user.id)
+    admin = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
     require_admin(db, group.id, admin.id)
 
@@ -398,12 +397,12 @@ def remove_group_member(
 def leave_group(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.models.family_group_post import FamilyGroupPost
     from app.models.family_group_post_comment import FamilyGroupPostComment
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
 
     member = db.query(FamilyGroupMember).filter(
@@ -454,9 +453,9 @@ def make_group_admin(
     group_id: str,
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
     require_admin(db, group.id, me.id)
 
@@ -478,9 +477,9 @@ def make_group_member(
     group_id: str,
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
     group = resolve_group(db, group_id)
     require_admin(db, group.id, me.id)
 
@@ -509,9 +508,9 @@ def make_group_member(
 @router.get("/invites/mine")
 def my_group_invites(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     invites = (
         db.query(FamilyInvite, FamilyGroup)
@@ -542,9 +541,9 @@ def my_group_invites(
 def list_group_join_requests(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     group = resolve_group(db, group_id)
 
@@ -593,7 +592,7 @@ def list_group_join_requests(
 def request_to_join_family_group(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     group = db.query(FamilyGroup).filter(FamilyGroup.id == group_id).first()
     if not group:
@@ -602,7 +601,7 @@ def request_to_join_family_group(
     if group.is_archived:
         raise HTTPException(400, "This group has been archived")
 
-    profile = get_current_user_profile(db, current_user.id)
+    profile = get_current_user_profile(db, current_user["sub"])
 
     exists = db.query(FamilyGroupMember).filter(
         FamilyGroupMember.group_id == group.id,
@@ -640,12 +639,12 @@ def request_to_join_family_group(
 def accept_join_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.models.family_group_post import FamilyGroupPost
     from app.models.family_group_post_comment import FamilyGroupPostComment
 
-    admin = get_current_user_profile(db, current_user.id)
+    admin = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupJoinRequest).filter(
         FamilyGroupJoinRequest.id == request_id
@@ -702,9 +701,9 @@ def accept_join_request(
 def decline_join_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    profile = get_current_user_profile(db, current_user.id)
+    profile = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupJoinRequest).filter(
         FamilyGroupJoinRequest.id == request_id
@@ -726,9 +725,9 @@ def decline_join_request(
 def cancel_join_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupJoinRequest).filter(
         FamilyGroupJoinRequest.id == request_id,
@@ -754,9 +753,9 @@ def invite_to_group(
     group_id: str,
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     group = db.query(FamilyGroup).filter(FamilyGroup.id == group_id).first()
     if not group:
@@ -823,12 +822,12 @@ from app.models.family_invite import FamilyInvite
 def list_group_invites(
     group_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     # --------------------------------------------------
     # WHO AM I
     # --------------------------------------------------
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     # --------------------------------------------------
     # LOAD GROUP + SECURITY CHECK
@@ -883,9 +882,9 @@ def list_group_invites(
 def cancel_group_invite(
     invite_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     invite = (
         db.query(FamilyInvite)
@@ -915,12 +914,12 @@ def cancel_group_invite(
 def accept_group_invite(
     invite_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.models.family_group_post import FamilyGroupPost
     from app.models.family_group_post_comment import FamilyGroupPostComment
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     invite = (
         db.query(FamilyInvite)
@@ -982,9 +981,9 @@ def accept_group_invite(
 def decline_group_invite(
     invite_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     invite = (
         db.query(FamilyInvite)
@@ -1008,9 +1007,9 @@ def decline_group_invite(
 @router.get("/join-requests/mine")
 def my_join_requests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     rows = (
         db.query(FamilyGroupJoinRequest, FamilyGroup)
@@ -1042,9 +1041,9 @@ def request_group_merge(
     to_group_id: str,
     payload: FamilyGroupMergeRequestCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     to_group = resolve_group(db, to_group_id)
     from_group = resolve_group(db, payload.from_group_id)
@@ -1135,9 +1134,9 @@ def request_group_merge(
 def incoming_merge_requests(
     group_id: str | None = None,  # 👈 ADD THIS
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     query = (
         db.query(FamilyGroupMergeRequest)
@@ -1200,9 +1199,9 @@ def incoming_merge_requests(
 def my_outgoing_group_merge_requests(
     group_id: str | None = None,  # 👈 ADD THIS
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     query = (
         db.query(FamilyGroupMergeRequest)
@@ -1319,9 +1318,9 @@ def _execute_group_merge(db: Session, from_group_id: str, to_group_id: str):
 def accept_group_merge_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupMergeRequest).filter(
         FamilyGroupMergeRequest.id == request_id
@@ -1354,9 +1353,9 @@ def accept_group_merge_request(
 def decline_group_merge_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupMergeRequest).filter(
         FamilyGroupMergeRequest.id == request_id
@@ -1385,9 +1384,9 @@ def decline_group_merge_request(
 def cancel_group_merge_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyGroupMergeRequest).filter(
         FamilyGroupMergeRequest.id == request_id

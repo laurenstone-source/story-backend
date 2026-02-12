@@ -1,18 +1,18 @@
 # routers/blocks.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.database import SessionLocal
 from app.models.block import Block
 from app.models.profile import Profile
-from app.auth import get_current_user
-from app.core.profile_access import get_current_user_profile
-from app.models.user import User
 from app.models.connection import Connection
-from datetime import datetime
+from app.auth.supabase_auth import get_current_user
+from app.core.profile_access import get_current_user_profile
 
 
 router = APIRouter(prefix="/blocks", tags=["Blocks"])
+
 
 def get_db():
     db = SessionLocal()
@@ -20,33 +20,31 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
 # --------------------------------------------------
-# BLOCKED PROFILE
+# BLOCK PROFILE
 # --------------------------------------------------
 @router.post("/{profile_id}")
 def block_profile(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    user_id = current_user["sub"]
 
-    # ----------------------------------------------
+    my_profile = get_current_user_profile(db, user_id)
+
     # Cannot block yourself
-    # ----------------------------------------------
     if profile_id == my_profile.id:
         raise HTTPException(400, "Cannot block yourself")
 
-    # ----------------------------------------------
     # Target must exist
-    # ----------------------------------------------
     target = db.query(Profile).filter(Profile.id == profile_id).first()
     if not target:
         raise HTTPException(404, "Profile not found")
 
-    # ----------------------------------------------
     # Already blocked → no-op
-    # ----------------------------------------------
     exists = (
         db.query(Block)
         .filter_by(
@@ -59,9 +57,7 @@ def block_profile(
     if exists:
         return {"status": "already_blocked"}
 
-    # ----------------------------------------------
     # Create block
-    # ----------------------------------------------
     db.add(
         Block(
             blocker_profile_id=my_profile.id,
@@ -69,9 +65,7 @@ def block_profile(
         )
     )
 
-    # ----------------------------------------------
-    # 🔒 Sever any existing connections (permanent)
-    # ----------------------------------------------
+    # Sever any existing connections
     existing_connections = (
         db.query(Connection)
         .filter(
@@ -91,23 +85,23 @@ def block_profile(
         conn.status = "rejected"
         conn.rejected_at = datetime.utcnow()
 
-    # ----------------------------------------------
-    # Commit all changes
-    # ----------------------------------------------
     db.commit()
 
     return {"status": "blocked"}
 
+
 # --------------------------------------------------
-#  UNBLOCK PROFILE
+# UNBLOCK PROFILE
 # --------------------------------------------------
 @router.delete("/{profile_id}")
 def unblock_profile(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    user_id = current_user["sub"]
+
+    my_profile = get_current_user_profile(db, user_id)
 
     block = db.query(Block).filter_by(
         blocker_profile_id=my_profile.id,
@@ -121,15 +115,19 @@ def unblock_profile(
     db.commit()
 
     return {"status": "unblocked"}
+
+
 # --------------------------------------------------
 # MY BLOCKED PROFILES
 # --------------------------------------------------
 @router.get("/mine")
 def get_my_blocked_profiles(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    user_id = current_user["sub"]
+
+    my_profile = get_current_user_profile(db, user_id)
 
     blocks = (
         db.query(Block)
@@ -160,4 +158,3 @@ def get_my_blocked_profiles(
         })
 
     return results
-

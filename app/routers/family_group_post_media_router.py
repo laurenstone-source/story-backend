@@ -6,10 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 
-from app.models.user import User
 from app.models.family_group_post import FamilyGroupPost
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post_media import FamilyGroupPostMedia
@@ -58,11 +57,11 @@ def upload_post_media(
     post_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     from app.storage import save_file, delete_file
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     # -------------------------------------------------
     # Load post
@@ -97,7 +96,7 @@ def upload_post_media(
     # Folder path
     # -------------------------------------------------
     folder = (
-        f"users/{current_user.id}/profiles/{me.id}"
+        f"users/{current_user["sub"]}/profiles/{me.id}"
         f"/family-groups/{post.group_id}/posts/{post.id}/media"
     )
 

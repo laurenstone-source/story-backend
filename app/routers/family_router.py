@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.database import SessionLocal
-from app.auth import get_current_user
-from app.models.user import User
+from app.auth.supabase_auth import get_current_user
 from app.models.profile import Profile
 from app.models.family_relationship import FamilyRelationship
 from app.models.family_relationship_request import FamilyRelationshipRequest
@@ -33,9 +32,9 @@ def get_db():
 def send_family_request(
     payload: FamilyRelationshipRequestCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     if payload.target_profile_id == my_profile.id:
         raise HTTPException(400, "Cannot relate to yourself")
@@ -69,9 +68,9 @@ def send_family_request(
 def accept_family_request(
     request_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyRelationshipRequest).filter(
         FamilyRelationshipRequest.id == request_id,
@@ -112,9 +111,9 @@ def accept_family_request(
 def reject_family_request(
     request_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyRelationshipRequest).filter(
         FamilyRelationshipRequest.id == request_id,
@@ -138,9 +137,9 @@ def reject_family_request(
 def cancel_family_request(
     request_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     req = db.query(FamilyRelationshipRequest).filter(
         FamilyRelationshipRequest.id == request_id,
@@ -163,9 +162,9 @@ def cancel_family_request(
 @router.get("/requests/mine", response_model=FamilyRelationshipRequestsMine)
 def my_family_requests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     incoming = db.query(FamilyRelationshipRequest).filter(
         FamilyRelationshipRequest.to_profile_id == my_profile.id,

@@ -26,13 +26,11 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import get_current_user
-
+from app.auth.supabase_auth import get_current_user
 from app.models.event_gallery import EventGallery
 from app.models.media import MediaFile
 from app.models.timeline_event import TimelineEvent
 from app.models.profile import Profile
-from app.models.user import User
 from fastapi import UploadFile, File
 from app.core.profile_visibility import can_view_profile
 
@@ -172,9 +170,9 @@ def build_gallery(db: Session, gallery: EventGallery) -> GalleryOut:
 def create_gallery(
     payload: GalleryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    if not owns_event(current_user.id, payload.event_id, db):
+    if not owns_event(current_user["sub"], payload.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     g = EventGallery(
@@ -200,13 +198,13 @@ def update_gallery(
     gallery_id: int,
     payload: GalleryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if payload.title is not None:
@@ -230,9 +228,9 @@ def update_gallery(
 def get_galleries_for_event(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    if not can_view_event(current_user.id, event_id, db):
+    if not can_view_event(current_user["sub"], event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     galleries = (
@@ -252,13 +250,13 @@ def get_galleries_for_event(
 def get_single_gallery(
     gallery_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not can_view_event(current_user.id, g.event_id, db):
+    if not can_view_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     return build_gallery(db, g)
@@ -271,13 +269,13 @@ def get_single_gallery(
 def delete_gallery(
     gallery_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     try:
@@ -328,9 +326,9 @@ def reorder_galleries(
     event_id: int,
     ids: List[int] = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    if not owns_event(current_user.id, event_id, db):
+    if not owns_event(current_user["sub"], event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     galleries = (
@@ -359,13 +357,13 @@ def reorder_media(
     gallery_id: int,
     ids: List[int] = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     for index, media_id in enumerate(ids):
@@ -390,13 +388,13 @@ async def upload_media_voice_note(
     media_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403)
 
     media = db.query(MediaFile).filter(
@@ -412,7 +410,7 @@ async def upload_media_voice_note(
     file_size = get_file_size(file)
 
     url = save_voice_file(
-        user_id=str(current_user.id),
+        user_id=str(current_user["sub"]),
         profile_id=str(event.profile_id),
         event_id=event.id,
         gallery_id=gallery_id,
@@ -438,13 +436,13 @@ async def delete_media_voice_note(
     gallery_id: int,
     media_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403)
 
     media = db.query(MediaFile).filter(
@@ -472,18 +470,18 @@ async def upload_gallery_media(
     file: UploadFile = File(...),
     caption: str | None = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     event = gallery.event
     profile_id = event.profile_id
-    user_id = current_user.id
+    user_id = current_user["sub"]
 
     ext = os.path.splitext(file.filename)[1].lower()
     is_video = ext in {".mp4", ".mov", ".avi", ".mkv", ".wmv"}
@@ -592,13 +590,13 @@ async def replace_gallery_media(
     media_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403)
 
     media = db.query(MediaFile).filter(
@@ -619,7 +617,7 @@ async def replace_gallery_media(
     # ✅ Measure size
     file_size = get_file_size(file)
 
-    folder = f"users/{current_user.id}/profiles/{gallery.event.profile_id}/events/{gallery.event_id}/galleries/{gallery_id}/original"
+    folder = f"users/{current_user["sub"]}/profiles/{gallery.event.profile_id}/events/{gallery.event_id}/galleries/{gallery_id}/original"
 
     new_url = save_file(folder, file)
 
@@ -644,13 +642,13 @@ def update_media(
     media_id: int,
     payload: GalleryMediaUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     m = db.query(MediaFile).filter(MediaFile.id == media_id).first()
@@ -676,13 +674,13 @@ def delete_gallery_media(
     gallery_id: int,
     media_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403)
 
     m = db.query(MediaFile).filter(MediaFile.id == media_id).first()
@@ -711,13 +709,13 @@ def set_gallery_thumbnail(
     gallery_id: int,
     media_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     g = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gallery not found")
 
-    if not owns_event(current_user.id, g.event_id, db):
+    if not owns_event(current_user["sub"], g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     m = (
@@ -744,13 +742,13 @@ async def upload_gallery_voice_note(
     gallery_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403)
 
     event = gallery.event
@@ -759,7 +757,7 @@ async def upload_gallery_voice_note(
     file_size = get_file_size(file)
 
     url = save_voice_file(
-        user_id=str(current_user.id),
+        user_id=str(current_user["sub"]),
         profile_id=str(event.profile_id),
         event_id=event.id,
         gallery_id=gallery_id,
@@ -784,13 +782,13 @@ async def upload_gallery_voice_note(
 async def delete_gallery_voice_note(
     gallery_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     gallery = db.query(EventGallery).filter(EventGallery.id == gallery_id).first()
     if not gallery:
         raise HTTPException(status_code=404)
 
-    if not owns_event(current_user.id, gallery.event_id, db):
+    if not owns_event(current_user["sub"], gallery.event_id, db):
         raise HTTPException(status_code=403)
 
     if gallery.voice_note_path:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 
 from app.models.family_group import FamilyGroup
@@ -117,7 +117,7 @@ def list_comments(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id
@@ -172,7 +172,7 @@ def create_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id,
@@ -219,7 +219,7 @@ def edit_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id,
@@ -261,7 +261,7 @@ def delete_comment(
     )
     from app.storage import delete_file
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id
@@ -320,7 +320,7 @@ def hide_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id
@@ -360,7 +360,7 @@ def unhide_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id

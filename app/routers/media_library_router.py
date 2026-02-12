@@ -4,10 +4,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 
 from app.models.media import MediaFile
-from app.models.user import User
 from app.models.profile import Profile
 from app.models.timeline_event import TimelineEvent
 from app.models.event_gallery import EventGallery
@@ -42,7 +41,7 @@ def _safe_name(value: str | None, fallback: str) -> str:
 @router.get("/library", response_model=list[MediaLibraryItemOut])
 def get_media_library(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     results: list[dict] = []
 
@@ -51,7 +50,7 @@ def get_media_library(
     # ======================================================
     media_items = (
         db.query(MediaFile)
-        .filter(MediaFile.user_id == current_user.id)
+        .filter(MediaFile.user_id == current_user["sub"])
         .options(
             joinedload(MediaFile.profile),
             joinedload(MediaFile.timeline_event),
@@ -139,7 +138,7 @@ def get_media_library(
     # ======================================================
     my_profile = (
         db.query(Profile)
-        .filter(Profile.user_id == current_user.id)
+        .filter(Profile.user_id == current_user["sub"])
         .first()
     )
 

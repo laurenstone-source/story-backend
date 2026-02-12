@@ -11,8 +11,7 @@ from app.schemas.connection_schema import (
     ConnectionMineOut,
 )
 from app.core.profile_access import get_current_user_profile
-from app.auth import get_current_user
-from app.models.user import User
+from app.auth.supabase_auth import get_current_user
 from app.models.block import Block
 
 from app.core.blocking import is_blocked
@@ -81,9 +80,9 @@ def get_db():
 def request_connection(
     payload: ConnectionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    from_profile = get_current_user_profile(db, current_user.id)
+    from_profile = get_current_user_profile(db, current_user["sub"])
 
     to_profile = (
         db.query(Profile)
@@ -122,7 +121,7 @@ def request_connection(
         from_profile_id=from_profile.id,
         to_profile_id=payload.to_profile_id,
         status="pending",
-        created_by_user_id=current_user.id,
+        created_by_user_id=current_user["sub"],
     )
 
     db.add(conn)
@@ -138,9 +137,9 @@ def request_connection(
 @router.get("/mine")
 def get_my_connections(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     # ----------------------------------------------
     # INCOMING (pending → to me)
@@ -223,9 +222,9 @@ def get_my_connections(
 def accept_connection(
     connection_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     conn = db.query(Connection).filter(Connection.id == connection_id).first()
     if not conn:
@@ -252,9 +251,9 @@ def accept_connection(
 def reject_connection(
     connection_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     conn = db.query(Connection).filter(Connection.id == connection_id).first()
     if not conn:
@@ -277,7 +276,7 @@ def reject_connection(
 def remove_connection(
     connection_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     conn = db.query(Connection).filter(Connection.id == connection_id).first()
     if not conn:
@@ -286,7 +285,7 @@ def remove_connection(
     from_profile = db.query(Profile).filter(Profile.id == conn.from_profile_id).first()
     to_profile = db.query(Profile).filter(Profile.id == conn.to_profile_id).first()
 
-    if current_user.id not in {from_profile.user_id, to_profile.user_id}:
+    if current_user["sub"] not in {from_profile.user_id, to_profile.user_id}:
         raise HTTPException(403, "Not authorised")
 
     conn.status = "rejected"
@@ -301,9 +300,9 @@ def remove_connection(
 def get_connection_status(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     # ----------------------------------------------
     # SELF
@@ -367,9 +366,9 @@ def set_relationship(
     connection_id: int,
     payload: SetRelationshipPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    my_profile = get_current_user_profile(db, current_user.id)
+    my_profile = get_current_user_profile(db, current_user["sub"]
 
     conn = (
         db.query(Connection)

@@ -19,7 +19,7 @@ from fastapi import (
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 from app.core.profile_visibility import can_view_profile
 
 from app.schemas.timeline_schema import (
@@ -32,7 +32,6 @@ from app.schemas.media_schema import MediaFileOut
 from app.models.timeline_event import TimelineEvent
 from app.models.media import MediaFile
 from app.models.profile import Profile
-from app.models.user import User
 
 from app.storage import save_file, delete_file, save_voice_file, get_file_size
 
@@ -55,9 +54,9 @@ def owns_profile(user_id: str, profile_id: str, db: Session):
 def add_event(
     data: TimelineEventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    if not owns_profile(current_user.id, data.profile_id, db):
+    if not owns_profile(current_user["sub"], data.profile_id, db):
         raise HTTPException(status_code=403, detail="Not your profile")
 
     # ✅ VALIDATE DATE RANGE FIRST
@@ -91,13 +90,13 @@ def update_event(
     event_id: int,
     update_data: TimelineEventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     data = update_data.dict(exclude_unset=True)
@@ -126,7 +125,7 @@ def update_event(
 def get_event(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = (
         db.query(TimelineEvent)
@@ -142,7 +141,7 @@ def get_event(
 
     if not can_view_profile(
         db=db,
-        viewer_user_id=current_user.id,
+        viewer_user_id=current_user["sub"],
         target_profile_id=event.profile_id,
     ):
         raise HTTPException(
@@ -158,11 +157,11 @@ def get_event(
 def get_profile_events(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     if not can_view_profile(
         db=db,
-        viewer_user_id=current_user.id,
+        viewer_user_id=current_user["sub"],
         target_profile_id=profile_id,
     ):
         raise HTTPException(status_code=403, detail="Not authorised")
@@ -189,14 +188,14 @@ async def upload_timeline_main_media(
     event_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -210,7 +209,7 @@ async def upload_timeline_main_media(
     file_size = get_file_size(file)
 
     folder = (
-        f"users/{current_user.id}/profiles/{event.profile_id}/events/{event.id}/main"
+        f"users/{current_user["sub"]}/profiles/{event.profile_id}/events/{event.id}/main"
     )
 
     # ---------------------------------------------------------
@@ -306,7 +305,7 @@ async def upload_timeline_main_media(
     # 4️⃣ CREATE NEW MEDIA
     # ---------------------------------------------------------
     media = MediaFile(
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         profile_id=event.profile_id,
         event_id=event.id,
         file_path=url,
@@ -331,14 +330,14 @@ async def upload_timeline_main_media(
 def delete_event_main_media(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if not event.main_media_id:
@@ -363,14 +362,14 @@ def delete_event_main_media(
 def delete_event(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
 
     if not event:
         raise HTTPException(status_code=404)
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403)
 
     if event.main_media_id:
@@ -398,14 +397,14 @@ async def upload_event_voice_note(
     event_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -415,7 +414,7 @@ async def upload_event_voice_note(
     file_size = get_file_size(file)
 
     url = save_voice_file(
-        user_id=str(current_user.id),
+        user_id=str(current_user["sub"]),
         profile_id=str(event.profile_id),
         scope="event",
         upload=file,
@@ -438,14 +437,14 @@ async def upload_event_voice_note(
 async def delete_event_voice_note(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     event = db.query(TimelineEvent).filter(TimelineEvent.id == event_id).first()
 
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if event.audio_url:
@@ -464,7 +463,7 @@ async def update_event_story(
     event_id: int,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     story = payload.get("story_text")
     if story is None:
@@ -474,7 +473,7 @@ async def update_event_story(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user.id, event.profile_id, db):
+    if not owns_profile(current_user["sub"], event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     event.story_text = story

@@ -6,7 +6,7 @@ from app.models.family_group import FamilyGroup
 
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post import FamilyGroupPost
@@ -94,7 +94,7 @@ def list_group_posts(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"]
     member = require_member(db, group_id, me.id)
 
     posts = (
@@ -128,7 +128,7 @@ def create_post(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     group = db.query(FamilyGroup).filter(FamilyGroup.id == group_id).first()
     if not group:
@@ -164,7 +164,7 @@ def edit_post(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id,
@@ -199,7 +199,7 @@ def delete_post(
     from app.models.family_group_post_media import FamilyGroupPostMedia
     from app.storage import delete_file
 
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id
@@ -252,7 +252,7 @@ def hide_post(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id
@@ -286,7 +286,7 @@ def unhide_post(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     post = db.query(FamilyGroupPost).filter(
         FamilyGroupPost.id == post_id

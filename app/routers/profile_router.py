@@ -26,11 +26,10 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 
 from app.models.profile import Profile
 from app.models.media import MediaFile
-from app.models.user import User
 
 from app.schemas.profile_schema import (
     ProfileCreate,
@@ -43,6 +42,8 @@ from app.storage import save_voice_file,save_file, delete_file,get_file_size
 
 router = APIRouter(prefix="/profile", tags=["Profiles"])
 
+def get_user_id(current_user: dict) -> str:
+    return current_user["sub"]
 
 # ---------------------------------------------------------------------
 # INTERNAL UTIL — Attach profile picture/video URLs
@@ -91,7 +92,7 @@ def attach_media_urls(db: Session, profile: Profile):
 def search_profiles(
     query: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     if len(query.strip()) < 2:
         return []
@@ -101,7 +102,7 @@ def search_profiles(
     # ----------------------------------------
     viewer_profile = (
         db.query(Profile)
-        .filter(Profile.user_id == current_user.id)
+        .filter(Profile.user_id == get_user_id(current_user))
         .first()
     )
 
@@ -151,7 +152,7 @@ def search_profiles(
             "is_public": profile.is_public,
             "can_view": can_view_profile(
                 db=db,
-                viewer_user_id=current_user.id,
+                viewer_user_id=get_user_id(current_user)
                 target_profile_id=profile.id,
             ),
         })
@@ -164,10 +165,10 @@ def search_profiles(
 @router.get("/me", response_model=ProfileOut)
 def get_my_profile(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(
-        Profile.user_id == current_user.id
+        Profile.user_id == get_user_id(current_user)
     ).first()
 
     if not profile:
@@ -197,10 +198,10 @@ def get_my_profile(
 def create_profile(
     payload: ProfileCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     existing = db.query(Profile).filter(
-        Profile.user_id == current_user.id
+        Profile.user_id == get_user_id(current_user)
     ).first()
 
     if existing:
@@ -208,7 +209,7 @@ def create_profile(
 
     new_profile = Profile(
         id=uuid.uuid4(),              # ✅ FIXED
-        user_id=current_user.id,
+        user_id=get_user_id(current_user),
         full_name=payload.full_name,
         bio=payload.bio,
         long_biography=payload.long_biography,
@@ -236,10 +237,10 @@ def create_profile(
 def update_my_profile(
     payload: ProfileUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(
-        Profile.user_id == current_user.id
+        Profile.user_id == get_user_id(current_user)
     ).first()
 
     if not profile:
@@ -271,14 +272,14 @@ def update_biography(
     profile_id: str,
     payload: dict,   # expects {"long_biography": "..."}
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     new_bio = payload.get("long_biography")
@@ -303,13 +304,13 @@ async def upload_profile_photo(
     profile_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     # Extension check only (no size limits)
@@ -319,7 +320,7 @@ async def upload_profile_photo(
 
     file_size = get_file_size(file)
 
-    folder = f"users/{current_user.id}/profiles/{profile_id}/profile-photo"
+    folder = f"users/{get_user_id(current_user)}/profiles/{profile_id}/profile-photo"
     url = save_file(folder, file)
 
     if profile.profile_picture_media_id:
@@ -335,7 +336,7 @@ async def upload_profile_photo(
             db.commit()
     else:
         media = MediaFile(
-            user_id=current_user.id,
+            user_id=get_user_id(current_user),
             profile_id=profile_id,
             file_path=url,
             file_type="image",
@@ -384,13 +385,13 @@ async def upload_profile_video(
     profile_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -399,7 +400,7 @@ async def upload_profile_video(
 
     file_size = get_file_size(file)
 
-    folder = f"users/{current_user.id}/profiles/{profile_id}/profile-video"
+    folder = f"users/{get_user_id(current_user)}/profiles/{profile_id}/profile-video"
     url = save_file(folder, file)
 
     if profile.profile_video_media_id:
@@ -415,7 +416,7 @@ async def upload_profile_video(
             db.commit()
     else:
         media = MediaFile(
-            user_id=current_user.id,
+            user_id=get_user_id(current_user),
             profile_id=profile_id,
             file_path=url,
             file_type="video",
@@ -445,14 +446,14 @@ async def upload_profile_voice_note(
     profile_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     # Extension sanity check only
@@ -465,7 +466,7 @@ async def upload_profile_voice_note(
 
     # Upload via shared storage helper
     url = save_voice_file(
-        user_id=str(current_user.id),
+        user_id=str(get_user_id(current_user)),
         profile_id=profile_id,
         scope="profile",
         upload=file,
@@ -492,14 +493,14 @@ async def upload_profile_voice_note(
 def delete_profile_photo(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
         raise HTTPException(status_code=404)
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403)
 
     if not profile.profile_picture_media_id:
@@ -525,14 +526,14 @@ def delete_profile_photo(
 def delete_profile_video(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
         raise HTTPException(status_code=404)
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403)
 
     if not profile.profile_video_media_id:
@@ -558,14 +559,14 @@ def delete_profile_video(
 async def delete_profile_voice_note(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
     if not profile:
         raise HTTPException(status_code=404)
 
-    if profile.user_id != current_user.id:
+    if profile.user_id != get_user_id(current_user):
         raise HTTPException(status_code=403)
 
     if profile.voice_note_path:
@@ -584,7 +585,7 @@ async def delete_profile_voice_note(
 def get_profile_relationships(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not profile:
@@ -642,9 +643,9 @@ class NextOfKinUpdate(BaseModel):
 def update_next_of_kin(
     payload: NextOfKinUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    profile = db.query(Profile).filter(Profile.user_id == current_user.id).first()
+    profile = db.query(Profile).filter(Profile.user_id == get_user_id(current_user)).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
@@ -669,7 +670,7 @@ def update_next_of_kin(
 def get_profile_by_id(
     profile_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
 
@@ -681,7 +682,7 @@ def get_profile_by_id(
     # -------------------------------------------------
     viewer_profile = (
         db.query(Profile)
-        .filter(Profile.user_id == current_user.id)
+        .filter(Profile.user_id == get_user_id(current_user))
         .first()
     )
 
@@ -692,7 +693,7 @@ def get_profile_by_id(
     # -------------------------------------------------
     # EXISTING VISIBILITY LOGIC (UNCHANGED)
     # -------------------------------------------------
-    allowed = can_view_profile(db, current_user.id, profile_id)
+    allowed = can_view_profile(db, get_user_id(current_user), profile_id)
 
     # ----------------------------------------
     # NOT ALLOWED → RETURN LIMITED PROFILE

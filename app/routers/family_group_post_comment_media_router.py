@@ -4,10 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 
-from app.models.user import User
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post_comment import FamilyGroupPostComment
 from app.models.family_group_post_comment_media import FamilyGroupPostCommentMedia
@@ -72,9 +71,9 @@ def upload_comment_media(
     comment_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     # -------------------------------------------------
     # Load comment
@@ -114,7 +113,7 @@ def upload_comment_media(
     # Folder path in Supabase
     # -------------------------------------------------
     folder = _comment_media_folder(
-        user_id=str(current_user.id),
+        user_id=str(current_user["sub"]),
         profile_id=str(me.id),
         group_id=str(post.group_id),
         comment_id=str(comment.id),
@@ -179,9 +178,9 @@ def upload_comment_media(
 def delete_comment_media(
     comment_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    me = get_current_user_profile(db, current_user.id)
+    me = get_current_user_profile(db, current_user["sub"])
 
     comment = db.query(FamilyGroupPostComment).filter(
         FamilyGroupPostComment.id == comment_id

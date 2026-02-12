@@ -9,8 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import get_current_user
-from app.models.user import User
+from app.auth.supabase_auth import get_current_user
 from app.models.media import MediaFile
 
 from app.models.profile import Profile
@@ -91,11 +90,11 @@ def download_supabase_file(storage_path: str) -> str | None:
 @router.get("/download-all")
 def download_all_media_zip(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     media_files = (
         db.query(MediaFile)
-        .filter(MediaFile.user_id == current_user.id)
+        .filter(MediaFile.user_id == current_user["sub"])
         .all()
     )
 
@@ -145,10 +144,10 @@ def download_folder_zip(
     name: str = Query("folder"),
 
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     query = db.query(MediaFile).filter(
-        MediaFile.user_id == current_user.id
+        MediaFile.user_id == current_user["sub"]
     )
 
     if scope == "profile":
