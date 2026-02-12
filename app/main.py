@@ -8,7 +8,6 @@ from app.config import settings
 
 # Import models so SQLAlchemy registers tables
 from app.models import (
-    user,
     profile,
     timeline_event,
     media,

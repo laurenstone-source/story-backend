@@ -25,20 +25,8 @@ class Settings:
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 
-    # -------------------------------------------------------
-    # Authentication / JWT
-    # -------------------------------------------------------
-    SECRET_KEY: str = os.getenv(
-        "SECRET_KEY",
-        "supersecretlocalkey123"   # Only used for local dev
-    )
-    ALGORITHM: str = "HS256"
 
-    # 1 day token expiry by default
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24)
-    )
-       # -------------------------------------------------------
+    # -------------------------------------------------------
     # Public base URL (used to build absolute media URLs)
     # -------------------------------------------------------
     BASE_URL: str = os.getenv(
@@ -63,6 +51,11 @@ class Settings:
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     SUPABASE_BUCKET: str = os.getenv("SUPABASE_BUCKET", "media")
+
+    # -------------------------------------------------------
+    # Supabase Auth (JWT verification)
+    # -------------------------------------------------------
+    SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
 
 # ✅ This stays OUTSIDE the class

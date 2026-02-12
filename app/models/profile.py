@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.types import Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -13,12 +13,12 @@ class Profile(Base):
 
     id = Column(String, primary_key=True, index=True)
 
-    # ✅ FIX: Must match users.id UUID type
+    # ✅ Supabase user UUID
     user_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
         unique=True,
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     full_name = Column(String, nullable=True)
@@ -40,12 +40,10 @@ class Profile(Base):
 
     profile_picture_media_id = Column(
         Integer,
-        ForeignKey("media_files.id"),
         nullable=True
     )
     profile_video_media_id = Column(
         Integer,
-        ForeignKey("media_files.id"),
         nullable=True
     )
 
@@ -54,8 +52,6 @@ class Profile(Base):
     # -------------------------------------------------------
     # RELATIONSHIPS
     # -------------------------------------------------------
-
-    user = relationship("User", back_populates="profile", foreign_keys=[user_id])
 
     events = relationship(
         "TimelineEvent",
@@ -67,16 +63,4 @@ class Profile(Base):
         "MediaFile",
         back_populates="profile",
         foreign_keys="MediaFile.profile_id"
-    )
-
-    profile_picture = relationship(
-        "MediaFile",
-        foreign_keys=[profile_picture_media_id],
-        uselist=False
-    )
-
-    profile_video = relationship(
-        "MediaFile",
-        foreign_keys=[profile_video_media_id],
-        uselist=False
     )
