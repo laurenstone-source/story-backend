@@ -152,7 +152,7 @@ def search_profiles(
             "is_public": profile.is_public,
             "can_view": can_view_profile(
                 db=db,
-                viewer_user_id=get_user_id(current_user)
+                viewer_user_id=get_user_id(current_user),
                 target_profile_id=profile.id,
             ),
         })
