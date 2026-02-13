@@ -86,7 +86,7 @@ def serialize_post(
 
         comment_count=visible_comment_count,
 
-        media_url=(post.media.file_path if post.media else None),
+        media_url=(post.media.media_path if post.media else None),
         media_type=(post.media.media_type if post.media else None),
 
         is_hidden=post.status != "visible",

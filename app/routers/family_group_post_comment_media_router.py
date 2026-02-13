@@ -87,7 +87,6 @@ def upload_comment_media(
 
     post = comment.post
 
-    group = post.group
     if group and group.is_archived:
         raise HTTPException(400, "Cannot modify comments in an archived group")
 
@@ -195,7 +194,7 @@ def delete_comment_media(
 
     post = comment.post
 
-    group = post.group
+    
     if group and group.is_archived:
         raise HTTPException(400, "Cannot modify comments in an archived group")
 
