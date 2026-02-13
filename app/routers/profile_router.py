@@ -204,6 +204,7 @@ def get_my_profile(
         db.add(profile)
         db.commit()
         db.refresh(profile)
+    print("PROFILE PIC MEDIA ID:", profile.profile_picture_media_id)  # 👈 HERE
 
     return serialize_profile(profile, db)
 
