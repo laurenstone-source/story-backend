@@ -54,6 +54,7 @@ def serialize_profile(profile: Profile, db: Session):
         bio=profile.bio,
         long_biography=profile.long_biography,
         is_public=profile.is_public,
+        is_searchable=profile.is_searchable,  # ✅ ADD
         date_of_birth=profile.date_of_birth,
         is_deceased=profile.is_deceased,
         date_of_death=profile.date_of_death,
@@ -61,12 +62,16 @@ def serialize_profile(profile: Profile, db: Session):
         next_of_kin_email=profile.next_of_kin_email,
         subscription_status=profile.subscription_status,
         subscription_tier=profile.subscription_tier,
+
+        profile_picture_media_id=profile.profile_picture_media_id,  # ✅ ADD
+        profile_video_media_id=profile.profile_video_media_id,      # ✅ ADD
+
         profile_picture_url=urls["profile_picture_url"],
         profile_video_url=urls["profile_video_url"],
+
         voice_note_path=profile.voice_note_path,
         voice_note_size=profile.voice_note_size,
     )
-
 # ---------------------------------------------------------------------
 # INTERNAL UTIL — Attach profile picture/video URLs
 # ---------------------------------------------------------------------
@@ -209,31 +214,6 @@ def get_my_profile(
     return serialize_profile(profile, db)
 
 
-# ---------------------------------------------------------------------
-# CREATE PROFILE
-# ---------------------------------------------------------------------
-@router.get("/me", response_model=ProfileOut)
-def get_my_profile(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    user_uuid = get_user_id(current_user)
-
-    profile = db.query(Profile).filter(
-        Profile.user_id == user_uuid
-    ).first()
-
-    # ✅ Auto-create profile if missing
-    if not profile:
-        profile = Profile(
-            id=str(uuid.uuid4()),
-            user_id=user_uuid,
-        )
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
-
-    return serialize_profile(profile, db)
 
 
 # ---------------------------------------------------------------------
