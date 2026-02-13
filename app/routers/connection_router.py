@@ -287,22 +287,42 @@ def remove_connection(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    my_profile = get_current_user_profile(db, current_user["sub"])
+
     conn = db.query(Connection).filter(Connection.id == connection_id).first()
     if not conn:
         raise HTTPException(404, "Connection not found")
 
-    from_profile = db.query(Profile).filter(Profile.id == conn.from_profile_id).first()
-    to_profile = db.query(Profile).filter(Profile.id == conn.to_profile_id).first()
+    # -----------------------------------------
+    # If it's still pending → only sender can cancel
+    # -----------------------------------------
+    if conn.status == "pending":
+        if conn.from_profile_id != my_profile.id:
+            raise HTTPException(403, "Only the sender can cancel this request")
 
-    if current_user["sub"] not in {from_profile.user_id, to_profile.user_id}:
-        raise HTTPException(403, "Not authorised")
+        conn.status = "rejected"
+        conn.rejected_at = datetime.utcnow()
+        db.commit()
 
-    conn.status = "rejected"
-    conn.rejected_at = datetime.utcnow()
-    db.commit()
+        return {"message": "Connection request cancelled"}
 
-    return {"message": "Connection removed"}
-# --------------------------------------------------
+    # -----------------------------------------
+    # If it's accepted → either side can remove
+    # -----------------------------------------
+    if conn.status == "accepted":
+        if my_profile.id not in {
+            conn.from_profile_id,
+            conn.to_profile_id,
+        }:
+            raise HTTPException(403, "Not authorised")
+
+        conn.status = "rejected"
+        conn.rejected_at = datetime.utcnow()
+        db.commit()
+
+        return {"message": "Connection removed"}
+
+    return {"message": "Nothing to remove"}# --------------------------------------------------
 # CONNECTION STATUS (read-only helper)
 # --------------------------------------------------
 @router.get("/status/{profile_id}")
