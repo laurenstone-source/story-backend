@@ -15,10 +15,9 @@ class MediaFile(Base):
 
     # ✅ FIX: user_id must match users.id (UUID)
     user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id"),
-        nullable=False,
-        index=True,
+         UUID(as_uuid=True),
+         nullable=False,
+         index=True,
     )
 
     # Used by timeline event main image
@@ -89,4 +88,4 @@ class MediaFile(Base):
         uselist=False,
     )
 
-    user = relationship("User", back_populates="media_files")
+    
