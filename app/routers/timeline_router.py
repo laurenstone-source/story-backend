@@ -39,12 +39,15 @@ from app.storage import save_file, delete_file, save_voice_file, get_file_size
 router = APIRouter(prefix="/timeline", tags=["Timeline Events"])
 
 
+
+def get_user_uuid(current_user: dict) -> uuid.UUID:
+    return uuid.UUID(current_user["sub"])
 # =====================================================================
 # Helper: Check if user owns the profile
 # =====================================================================
-def owns_profile(user_id: str, profile_id: str, db: Session):
+def owns_profile(user_id: uuid.UUID, profile_id: str, db: Session) -> bool:
     profile = db.query(Profile).filter(Profile.id == profile_id).first()
-    return profile and profile.user_id == user_id
+    return bool(profile) and profile.user_id == user_id
 
 
 # =====================================================================
@@ -74,7 +77,11 @@ def add_event(
          end_date=data.end_date,
          date_precision=data.date_precision,
          order_index=data.order_index,
+         viewer_id = get_user_uuid(current_user)
      )
+
+    if not owns_profile(viewer_id, data.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not your profile")
 
     db.add(event)
     db.commit()
@@ -96,8 +103,9 @@ def update_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+    viewer_id = get_user_uuid(current_user)
+if not owns_profile(viewer_id, event.profile_id, db):
+    raise HTTPException(status_code=403, detail="Not authorised")
 
     data = update_data.dict(exclude_unset=True)
 
@@ -195,10 +203,11 @@ async def upload_timeline_main_media(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+    viewer_id = get_user_uuid(current_user)
+    if not owns_profile(viewer_id, event.profile_id, db):
+    raise HTTPException(status_code=403, detail="Not authorised")
 
-    ext = os.path.splitext(file.filename)[1].lower()
+        ext = os.path.splitext(file.filename)[1].lower()
 
     allowed_image_types = {".jpg", ".jpeg", ".png", ".webp"}
     allowed_video_types = {".mp4", ".mov", ".webm"}
@@ -337,8 +346,9 @@ def delete_event_main_media(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+    viewer_id = get_user_uuid(current_user)
+    if not owns_profile(viewer_id, event.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not authorised")
 
     if not event.main_media_id:
         return {"message": "No main image set"}
@@ -369,8 +379,9 @@ def delete_event(
     if not event:
         raise HTTPException(status_code=404)
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403)
+    viewer_id = get_user_uuid(current_user)
+    if not owns_profile(viewer_id, event.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not authorised")
 
     if event.main_media_id:
         media = db.query(MediaFile).filter(
@@ -404,8 +415,9 @@ async def upload_event_voice_note(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+    viewer_id = get_user_uuid(current_user)
+    if not owns_profile(viewer_id, event.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not authorised")
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".m4a", ".aac", ".mp3", ".wav"}:
@@ -444,7 +456,8 @@ async def delete_event_voice_note(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
+     viewer_id = get_user_uuid(current_user)
+     if not owns_profile(viewer_id, event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if event.audio_url:
@@ -473,8 +486,9 @@ async def update_event_story(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if not owns_profile(current_user["sub"], event.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not authorised")
+    viewer_id = get_user_uuid(current_user)
+    if not owns_profile(viewer_id, event.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not authorised")
 
     event.story_text = story
     db.commit()
