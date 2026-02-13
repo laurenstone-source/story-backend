@@ -41,8 +41,8 @@ from app.storage import save_voice_file,save_file, delete_file,get_file_size
 
 router = APIRouter(prefix="/profile", tags=["Profiles"])
 
-def get_user_id(current_user: dict) -> str:
-    return current_user["sub"]
+def get_user_id(current_user: dict) -> uuid.UUID:
+    return uuid.UUID(current_user["sub"])
 
 def serialize_profile(profile: Profile, db: Session):
     urls = attach_media_urls(db, profile)
