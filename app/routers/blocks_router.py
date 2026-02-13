@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from app.models.block import Block
 from app.models.profile import Profile
 from app.models.connection import Connection
+from app.models.media import MediaFile
 from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 
@@ -147,14 +148,18 @@ def get_my_blocked_profiles(
         if not profile:
             continue
 
-        results.append({
-            "id": profile.id,
-            "full_name": profile.full_name,
-            "profile_picture": (
-                profile.profile_picture.file_path
-                if profile.profile_picture
-                else None
-            ),
-        })
+        media = None
+    if profile.profile_picture_media_id:
+        media = (
+            db.query(MediaFile)
+            .filter(MediaFile.id == profile.profile_picture_media_id)
+            .first()
+        )
+
+    results.append({
+        "id": profile.id,
+        "full_name": profile.full_name,
+        "profile_picture": media.file_path if media else None,
+    })
 
     return results
