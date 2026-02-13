@@ -36,6 +36,10 @@ class Profile(Base):
     is_deceased = Column(Boolean, default=False)
     date_of_death = Column(Date, nullable=True)
 
+    # ✅ Add these back
+    subscription_status = Column(String, nullable=False, default="free")
+    subscription_tier = Column(String, nullable=False, default="free")
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     profile_picture_media_id = Column(
@@ -48,6 +52,7 @@ class Profile(Base):
     )
 
     voice_note_path = Column(String, nullable=True)
+    voice_note_size = Column(Integer, nullable=True)  # you were using this in serializer
 
     # -------------------------------------------------------
     # RELATIONSHIPS
