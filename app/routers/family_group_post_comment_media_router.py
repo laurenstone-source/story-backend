@@ -87,6 +87,11 @@ def upload_comment_media(
 
     post = comment.post
 
+    from app.models.family_group import FamilyGroup
+    group = db.query(FamilyGroup).filter(
+        FamilyGroup.id == post.group_id
+    ).first()
+
     if group and group.is_archived:
         raise HTTPException(400, "Cannot modify comments in an archived group")
 
@@ -194,7 +199,11 @@ def delete_comment_media(
 
     post = comment.post
 
-    
+    from app.models.family_group import FamilyGroup
+    group = db.query(FamilyGroup).filter(
+        FamilyGroup.id == post.group_id
+    ).first()
+
     if group and group.is_archived:
         raise HTTPException(400, "Cannot modify comments in an archived group")
 
