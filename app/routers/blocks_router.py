@@ -126,9 +126,7 @@ def get_my_blocked_profiles(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    user_id = current_user["sub"]
-
-    my_profile = get_current_user_profile(db, user_id)
+    my_profile = get_current_user_profile(db, current_user["sub"])
 
     blocks = (
         db.query(Block)
@@ -149,17 +147,17 @@ def get_my_blocked_profiles(
             continue
 
         media = None
-    if profile.profile_picture_media_id:
-        media = (
-            db.query(MediaFile)
-            .filter(MediaFile.id == profile.profile_picture_media_id)
-            .first()
-        )
+        if profile.profile_picture_media_id:
+            media = (
+                db.query(MediaFile)
+                .filter(MediaFile.id == profile.profile_picture_media_id)
+                .first()
+            )
 
-    results.append({
-        "id": profile.id,
-        "full_name": profile.full_name,
-        "profile_picture": media.file_path if media else None,
-    })
+        results.append({
+            "id": profile.id,
+            "full_name": profile.full_name,
+            "profile_picture": media.file_path if media else None,
+        })
 
     return results

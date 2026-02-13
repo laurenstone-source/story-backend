@@ -9,7 +9,6 @@ from fastapi import UploadFile, File
 import os
 from app.routers.profile_router import attach_media_urls
 from app.utils.urls import absolute_media_url
-from app.database import SessionLocal
 from app.auth.supabase_auth import get_current_user
 from app.models.profile import Profile
 
@@ -121,19 +120,11 @@ def upload_group_image(
     # -------------------------------------------------
     # Upload new image
     # -------------------------------------------------
-    folder = f"users/{current_user["sub"]}/profiles/{me.id}/groups/{group.id}"
+    folder = f"users/{current_user['sub']}/profiles/{me.id}/groups/{group.id}"
     filename = f"group_{uuid.uuid4()}{ext}"
 
     url = save_file(folder, file, filename)
 
-    group.group_image_url = url
-    db.commit()
-    db.refresh(group)
-
-    return {"image_url": url, "success": True}
-    # -------------------------------------------------
-    # Save URL in DB
-    # -------------------------------------------------
     group.group_image_url = url
     db.commit()
     db.refresh(group)
