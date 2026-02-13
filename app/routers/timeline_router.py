@@ -436,7 +436,6 @@ async def upload_event_voice_note(
     file_size = get_file_size(file)
 
     url = save_voice_file(
-        viewer_id = get_user_uuid(current_user),
         user_id=str(viewer_id),
         profile_id=str(event.profile_id),
         scope="event",
