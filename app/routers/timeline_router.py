@@ -59,8 +59,10 @@ def add_event(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    if not owns_profile(current_user["sub"], data.profile_id, db):
-        raise HTTPException(status_code=403, detail="Not your profile")
+    viewer_id = get_user_uuid(current_user)
+
+    if not owns_profile(viewer_id, data.profile_id, db):
+       raise HTTPException(status_code=403, detail="Not your profile")
 
     # ✅ VALIDATE DATE RANGE FIRST
     if data.end_date and data.end_date < data.start_date:
@@ -223,7 +225,7 @@ async def upload_timeline_main_media(
     file_size = get_file_size(file)
 
     folder = (
-        f"users/{current_user["sub"]}/profiles/{event.profile_id}/events/{event.id}/main"
+        f"users/{current_user['sub']}/profiles/{event.profile_id}/events/{event.id}/main"
     )
 
     # ---------------------------------------------------------
