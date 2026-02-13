@@ -716,7 +716,9 @@ def delete_gallery_media(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, gallery.event_id, db):
+    viewer_id = get_user_uuid(current_user)
+
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     m = db.query(MediaFile).filter(MediaFile.id == media_id).first()
