@@ -343,7 +343,7 @@ def reorder_galleries(
 ):
     iviewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
     
     galleries = (
@@ -380,7 +380,7 @@ def reorder_media(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     for index, media_id in enumerate(ids):
@@ -413,7 +413,7 @@ async def upload_media_voice_note(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     media = db.query(MediaFile).filter(
@@ -463,7 +463,7 @@ async def delete_media_voice_note(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     media = db.query(MediaFile).filter(
@@ -747,7 +747,7 @@ def set_gallery_thumbnail(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, gallery.event_id, db):
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     m = (
