@@ -92,6 +92,7 @@ def add_event(
 # =====================================================================
 # UPDATE EVENT
 # =====================================================================
+
 @router.put("/{event_id}", response_model=TimelineEventOut)
 def update_event(
     event_id: int,
@@ -104,14 +105,16 @@ def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     viewer_id = get_user_uuid(current_user)
-if not owns_profile(viewer_id, event.profile_id, db):
-    raise HTTPException(status_code=403, detail="Not authorised")
+
+    if not owns_profile(viewer_id, event.profile_id, db):
+        raise HTTPException(status_code=403, detail="Not authorised")
 
     data = update_data.dict(exclude_unset=True)
 
     # ✅ DATE RANGE SAFETY
     start = data.get("start_date", event.start_date)
     end = data.get("end_date", event.end_date)
+
     if end and start and end < start:
         raise HTTPException(
             status_code=400,
@@ -123,6 +126,7 @@ if not owns_profile(viewer_id, event.profile_id, db):
 
     db.commit()
     db.refresh(event)
+
     return event
 
 
