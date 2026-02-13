@@ -168,7 +168,7 @@ def create_post(
     db.commit()
     db.refresh(post)
 
-    return serialize_post(post, me, member)
+    return serialize_post(post, me, member, db)
 
 
 # --------------------------------------------------
