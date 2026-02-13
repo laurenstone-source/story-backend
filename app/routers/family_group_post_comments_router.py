@@ -128,7 +128,7 @@ def list_comments(
     member = require_member(db, post.group_id, me.id)
 
     query = (
-    db.query(FamilyGroupPostComment)
+    db.query(FamilyGroupPostComment),
     .options(joinedload(FamilyGroupPostComment.media))
     joinedload(FamilyGroupPostComment.author), 
     .filter(
