@@ -499,7 +499,7 @@ async def upload_gallery_media(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, gallery.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     event = gallery.event
