@@ -215,9 +215,9 @@ def update_gallery(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
-
+    
     if payload.title is not None:
         g.title = payload.title
     if payload.description is not None:
@@ -288,7 +288,7 @@ def delete_gallery(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     try:
@@ -343,7 +343,9 @@ def reorder_galleries(
 ):
     iviewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, gallery.event_id, db):
+    viewer_id = get_user_uuid(current_user)
+
+    if not owns_event(viewer_id, event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
     
     galleries = (
@@ -380,7 +382,9 @@ def reorder_media(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, gallery.event_id, db):
+    viewer_id = get_user_uuid(current_user)
+
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     for index, media_id in enumerate(ids):
@@ -676,7 +680,9 @@ def update_media(
 
     viewer_id = get_user_uuid(current_user)
 
-    if not owns_event(viewer_id, payload.event_id, db):
+    viewer_id = get_user_uuid(current_user)
+
+    if not owns_event(viewer_id, g.event_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     m = db.query(MediaFile).filter(MediaFile.id == media_id).first()
