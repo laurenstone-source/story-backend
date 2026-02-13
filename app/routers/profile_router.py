@@ -184,36 +184,23 @@ def search_profiles(
 # ---------------------------------------------------------------------
 # GET MY PROFILE (Auto-create if missing)
 # ---------------------------------------------------------------------
-import uuid
-from datetime import datetime
-
 @router.get("/me", response_model=ProfileOut)
 def get_my_profile(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    user_id_str = get_user_id(current_user)
-
-    try:
-        user_uuid = uuid.UUID(user_id_str)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid user ID format",
-        )
+    user_uuid = get_user_id(current_user)
 
     profile = db.query(Profile).filter(
         Profile.user_id == user_uuid
     ).first()
 
-    # 🔥 Auto-create if not found
+    # ✅ Auto-create profile if missing
     if not profile:
         profile = Profile(
             id=str(uuid.uuid4()),
             user_id=user_uuid,
-            created_at=datetime.utcnow() if hasattr(Profile, "created_at") else None,
         )
-
         db.add(profile)
         db.commit()
         db.refresh(profile)
@@ -224,40 +211,28 @@ def get_my_profile(
 # ---------------------------------------------------------------------
 # CREATE PROFILE
 # ---------------------------------------------------------------------
-@router.post("/", response_model=ProfileOut)
-def create_profile(
-    payload: ProfileCreate,
+@router.get("/me", response_model=ProfileOut)
+def get_my_profile(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    existing = db.query(Profile).filter(
-        Profile.user_id == get_user_id(current_user)
+    user_uuid = get_user_id(current_user)
+
+    profile = db.query(Profile).filter(
+        Profile.user_id == user_uuid
     ).first()
 
-    if existing:
-        raise HTTPException(status_code=400, detail="Profile already exists")
+    # ✅ Auto-create profile if missing
+    if not profile:
+        profile = Profile(
+            id=str(uuid.uuid4()),
+            user_id=user_uuid,
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
 
-    new_profile = Profile(
-        id=uuid.uuid4(),              # ✅ FIXED
-        user_id=get_user_id(current_user),
-        full_name=payload.full_name,
-        bio=payload.bio,
-        long_biography=payload.long_biography,
-        is_public=payload.is_public,
-        date_of_birth=payload.date_of_birth,
-        is_deceased=payload.is_deceased,
-        date_of_death=payload.date_of_death,
-    )
-
-    db.add(new_profile)
-    db.commit()
-    db.refresh(new_profile)
-
-    urls = attach_media_urls(db, new_profile)
-
-    return serialize_profile(new_profile, db)
-
-
+    return serialize_profile(profile, db)
 
 
 # ---------------------------------------------------------------------
