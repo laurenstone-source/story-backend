@@ -84,7 +84,7 @@ def add_event(
          end_date=data.end_date,
          date_precision=data.date_precision,
          order_index=data.order_index,
-         viewer_id = get_user_uuid(current_user)
+         
      )
 
 
