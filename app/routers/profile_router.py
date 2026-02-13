@@ -182,23 +182,41 @@ def search_profiles(
     return results
 
 # ---------------------------------------------------------------------
-# GET MY PROFILE
+# GET MY PROFILE (Auto-create if missing)
 # ---------------------------------------------------------------------
+import uuid
+from datetime import datetime
+
 @router.get("/me", response_model=ProfileOut)
 def get_my_profile(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    profile = db.query(Profile).filter(
-        Profile.user_id == get_user_id(current_user)
-    ).first()
+    user_id_str = get_user_id(current_user)
 
-    if not profile:
+    try:
+        user_uuid = uuid.UUID(user_id_str)
+    except ValueError:
         raise HTTPException(
-            status_code=404,
-            detail="Profile does not exist"
+            status_code=400,
+            detail="Invalid user ID format",
         )
 
+    profile = db.query(Profile).filter(
+        Profile.user_id == user_uuid
+    ).first()
+
+    # 🔥 Auto-create if not found
+    if not profile:
+        profile = Profile(
+            id=str(uuid.uuid4()),
+            user_id=user_uuid,
+            created_at=datetime.utcnow() if hasattr(Profile, "created_at") else None,
+        )
+
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
 
     return serialize_profile(profile, db)
 
