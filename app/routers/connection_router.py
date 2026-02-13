@@ -5,6 +5,7 @@ from datetime import datetime
 from app.database import SessionLocal
 from app.models.profile import Profile
 from app.models.connection import Connection
+from app.models.media import MediaFile
 from app.schemas.connection_schema import (
     ConnectionCreate,
     ConnectionOut,
@@ -22,12 +23,20 @@ from app.schemas.connection_schema import SetRelationshipPayload
 
 router = APIRouter(prefix="/connections", tags=["Connections"])
 
-def profile_image_url(profile: Profile) -> str | None:
-    if profile.profile_picture is None:
+def profile_image_url(profile, db):
+    if profile.profile_picture_media_id is None:
         return None
 
-    # MediaFile.file_path is already relative (e.g. /media/profile/xxx.jpg)
-    return profile.profile_picture.file_path
+    media = (
+        db.query(MediaFile)
+        .filter(MediaFile.id == profile.profile_picture_media_id)
+        .first()
+    )
+
+    if not media:
+        return None
+
+    return media.file_path
 # --------------------------------------------------
 # CONNECTION SERIALISER (MUST BE ABOVE ROUTES)
 # --------------------------------------------------
@@ -55,7 +64,7 @@ def build_connection_out(conn: Connection, my_profile_id: str, db: Session):
         "profile": {
             "id": other.id,
             "full_name": other.full_name,
-            "profile_image": profile_image_url(other),
+            "profile_image": profile_image_url(other, db),
         },
         "created_at": conn.created_at,
         "updated_at": conn.updated_at,
