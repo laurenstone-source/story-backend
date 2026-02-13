@@ -46,10 +46,15 @@ def get_user_uuid(current_user: dict) -> uuid.UUID:
 # Helper: Check if user owns the profile
 # =====================================================================
 def owns_profile(user_id: uuid.UUID, profile_id: str, db: Session) -> bool:
-    profile = db.query(Profile).filter(Profile.id == profile_id).first()
-    return bool(profile) and profile.user_id == user_id
-
-
+    return (
+        db.query(Profile)
+        .filter(
+            Profile.id == profile_id,
+            Profile.user_id == user_id
+        )
+        .first()
+        is not None
+    )
 # =====================================================================
 # CREATE EVENT
 # =====================================================================
@@ -62,7 +67,7 @@ def add_event(
     viewer_id = get_user_uuid(current_user)
 
     if not owns_profile(viewer_id, data.profile_id, db):
-       raise HTTPException(status_code=403, detail="Not your profile")
+        raise HTTPException(status_code=403, detail="Not your profile")
 
     # ✅ VALIDATE DATE RANGE FIRST
     if data.end_date and data.end_date < data.start_date:
