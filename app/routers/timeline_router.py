@@ -457,8 +457,9 @@ async def delete_event_voice_note(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-     viewer_id = get_user_uuid(current_user)
-     if not owns_profile(viewer_id, event.profile_id, db):
+    viewer_id = get_user_uuid(current_user)
+    
+    if not owns_profile(viewer_id, event.profile_id, db):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     if event.audio_url:
