@@ -205,7 +205,7 @@ async def upload_timeline_main_media(
 
     viewer_id = get_user_uuid(current_user)
     if not owns_profile(viewer_id, event.profile_id, db):
-    raise HTTPException(status_code=403, detail="Not authorised")
+       raise HTTPException(status_code=403, detail="Not authorised")
 
         ext = os.path.splitext(file.filename)[1].lower()
 
