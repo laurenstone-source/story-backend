@@ -13,32 +13,32 @@ class MediaFile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # ✅ FIX: user_id must match users.id (UUID)
+    # Supabase Auth UUID (no FK constraint)
     user_id = Column(
-         UUID(as_uuid=True),
-         nullable=False,
-         index=True,
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
     )
 
-    # Used by timeline event main image
+    # Timeline event
     event_id = Column(
         Integer,
         ForeignKey("timeline_events.id", ondelete="CASCADE"),
-        nullable=True
+        nullable=True,
     )
 
-    # Used by profile picture/video
+    # Profile media
     profile_id = Column(
         String,
-        ForeignKey("profiles.id"),
-        nullable=True
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=True,
     )
 
-    # Used by gallery
+    # Gallery media
     gallery_id = Column(
         Integer,
         ForeignKey("event_galleries.id", ondelete="CASCADE"),
-        nullable=True
+        nullable=True,
     )
 
     # File info
@@ -57,7 +57,7 @@ class MediaFile(Base):
     original_media_id = Column(
         Integer,
         ForeignKey("media_files.id"),
-        nullable=True
+        nullable=True,
     )
 
     uploaded_at = Column(DateTime, default=datetime.utcnow)
@@ -87,5 +87,3 @@ class MediaFile(Base):
         remote_side=[id],
         uselist=False,
     )
-
-    
