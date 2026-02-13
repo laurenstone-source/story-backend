@@ -9,7 +9,6 @@ from app.core.profile_visibility import can_view_profile
 from app.schemas.profile_schema import ProfileOut, ProfileOutLimited
 from typing import List
 from app.schemas.profile_search_schema import ProfileSearchOut
-from app.core.profile_visibility import can_view_profile
 from app.utils.urls import absolute_media_url
 from app.core.blocking import is_blocked
 from app.models.connection import Connection
@@ -44,6 +43,29 @@ router = APIRouter(prefix="/profile", tags=["Profiles"])
 
 def get_user_id(current_user: dict) -> str:
     return current_user["sub"]
+
+def serialize_profile(profile: Profile, db: Session):
+    urls = attach_media_urls(db, profile)
+
+    return ProfileOut(
+        id=str(profile.id),
+        user_id=str(profile.user_id),
+        full_name=profile.full_name,
+        bio=profile.bio,
+        long_biography=profile.long_biography,
+        is_public=profile.is_public,
+        date_of_birth=profile.date_of_birth,
+        is_deceased=profile.is_deceased,
+        date_of_death=profile.date_of_death,
+        next_of_kin_name=profile.next_of_kin_name,
+        next_of_kin_email=profile.next_of_kin_email,
+        subscription_status=profile.subscription_status,
+        subscription_tier=profile.subscription_tier,
+        profile_picture_url=urls["profile_picture_url"],
+        profile_video_url=urls["profile_video_url"],
+        voice_note_path=profile.voice_note_path,
+        voice_note_size=profile.voice_note_size,
+    )
 
 # ---------------------------------------------------------------------
 # INTERNAL UTIL — Attach profile picture/video URLs
@@ -146,7 +168,7 @@ def search_profiles(
                 picture_url = absolute_media_url(media.file_path)
 
         results.append({
-            "id": profile.id,
+            "id": str(profile.id),
             "full_name": profile.full_name,
             "profile_picture_url": picture_url,
             "is_public": profile.is_public,
@@ -177,18 +199,8 @@ def get_my_profile(
             detail="Profile does not exist"
         )
 
-    urls = attach_media_urls(db, profile)
 
-    data = {
-        **profile.__dict__,
-        **urls,
-    }
-
-    # ✅ Convert UUID fields (if still needed)
-    data["id"] = str(profile.id)
-    data["user_id"] = str(profile.user_id)
-
-    return data
+    return serialize_profile(profile, db)
 
 
 # ---------------------------------------------------------------------
@@ -225,7 +237,7 @@ def create_profile(
 
     urls = attach_media_urls(db, new_profile)
 
-    return {**new_profile.__dict__, **urls}
+    return serialize_profile(new_profile, db)
 
 
 
@@ -254,12 +266,8 @@ def update_my_profile(
     db.refresh(profile)
 
     urls = attach_media_urls(db, profile)
-
-    data = {**profile.__dict__, **urls}
-    data["id"] = str(profile.id)
-    data["user_id"] = str(profile.user_id)
-
-    return data
+    
+    return serialize_profile(profile, db)
 
 
 
@@ -291,7 +299,7 @@ def update_biography(
     db.refresh(profile)
 
     urls = attach_media_urls(db, profile)
-    return {**profile.__dict__, **urls}
+    return serialize_profile(profile, db)
 
 
 
@@ -662,7 +670,7 @@ def update_next_of_kin(
     db.refresh(profile)
 
     urls = attach_media_urls(db, profile)
-    return {**profile.__dict__, **urls}
+    return serialize_profile(profile, db)
 # ---------------------------------------------------------------------
 # GET PROFILE BY ID (PUBLIC / LIMITED / CONNECTED)
 # ---------------------------------------------------------------------
@@ -714,5 +722,4 @@ def get_profile_by_id(
     # ----------------------------------------
     # ALLOWED → RETURN FULL PROFILE
     # ----------------------------------------
-    urls = attach_media_urls(db, profile)
-    return {**profile.__dict__, **urls}
+    return serialize_profile(profile, db)
