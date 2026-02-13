@@ -87,8 +87,6 @@ def add_event(
          viewer_id = get_user_uuid(current_user)
      )
 
-    if not owns_profile(viewer_id, data.profile_id, db):
-       raise HTTPException(status_code=403, detail="Not your profile")
 
     db.add(event)
     db.commit()
@@ -326,7 +324,7 @@ async def upload_timeline_main_media(
     # 4️⃣ CREATE NEW MEDIA
     # ---------------------------------------------------------
     media = MediaFile(
-        user_id=current_user["sub"],
+        user_id=viewer_id,
         profile_id=event.profile_id,
         event_id=event.id,
         file_path=url,
@@ -438,7 +436,8 @@ async def upload_event_voice_note(
     file_size = get_file_size(file)
 
     url = save_voice_file(
-        user_id=str(current_user["sub"]),
+        viewer_id = get_user_uuid(current_user),
+        user_id=str(viewer_id),
         profile_id=str(event.profile_id),
         scope="event",
         upload=file,
