@@ -10,6 +10,7 @@ from app.auth.supabase_auth import get_current_user
 from app.core.profile_access import get_current_user_profile
 from app.models.family_group_member import FamilyGroupMember
 from app.models.family_group_post import FamilyGroupPost
+from app.models.media import MediaFile
 from app.schemas.family_group_post_schema import (
     GroupPostCreate,
     GroupPostOut,
@@ -44,18 +45,37 @@ def serialize_post(
     post: FamilyGroupPost,
     me,
     member: FamilyGroupMember,
+    db: Session,
 ):
+    # --------------------------------------------------
+    # Resolve author profile picture properly
+    # --------------------------------------------------
+    profile_image_url = None
+
+    if post.author and post.author.profile_picture_media_id:
+        media = (
+            db.query(MediaFile)
+            .filter(MediaFile.id == post.author.profile_picture_media_id)
+            .first()
+        )
+        if media:
+            profile_image_url = media.file_path
+
+    # --------------------------------------------------
+    # Count visible comments safely
+    # --------------------------------------------------
+    visible_comment_count = len([
+        c for c in post.comments
+        if c.status == "visible"
+    ])
+
     return GroupPostOut(
         id=post.id,
         group_id=post.group_id,
         author_profile_id=post.author_profile_id,
 
         author_name=post.author.full_name if post.author else None,
-        author_profile_picture=(
-            post.author.profile_picture.file_path
-            if post.author and post.author.profile_picture
-            else None
-        ),
+        author_profile_picture=profile_image_url,
 
         content_text=post.content_text,
         status=post.status,
@@ -64,12 +84,9 @@ def serialize_post(
         updated_at=post.updated_at,
         last_activity_at=post.last_activity_at,
 
-        comment_count=len([
-            c for c in post.comments
-            if c.status == "visible"
-        ]),
+        comment_count=visible_comment_count,
 
-        media_url=(post.media.media_path if post.media else None),
+        media_url=(post.media.file_path if post.media else None),
         media_type=(post.media.media_type if post.media else None),
 
         is_hidden=post.status != "visible",
@@ -80,7 +97,6 @@ def serialize_post(
             or member.role == "admin"
         ),
     )
-
 
 # --------------------------------------------------
 # LIST POSTS
@@ -101,7 +117,8 @@ def list_group_posts(
         db.query(FamilyGroupPost)
         .options(
             joinedload(FamilyGroupPost.media),
-            joinedload(FamilyGroupPost.comments),  # ✅ ADD THIS
+            joinedload(FamilyGroupPost.comments),
+            joinedload(FamilyGroupPost.author),  # ✅ ADD THIS
         )
         .filter(
             FamilyGroupPost.group_id == group_id,
@@ -115,7 +132,7 @@ def list_group_posts(
         .all()
     )
 
-    return [serialize_post(p, me, member) for p in posts]
+    return [serialize_post(p, me, member, db) for p in posts]
 
 # --------------------------------------------------
 # CREATE POST

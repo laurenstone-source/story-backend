@@ -87,6 +87,10 @@ def upload_comment_media(
 
     post = comment.post
 
+    group = post.group
+    if group and group.is_archived:
+        raise HTTPException(400, "Cannot modify comments in an archived group")
+
     # Must be a member
     member = require_member(db, post.group_id, me.id)
 
@@ -190,6 +194,10 @@ def delete_comment_media(
         raise HTTPException(404, "Comment not found")
 
     post = comment.post
+
+    group = post.group
+    if group and group.is_archived:
+        raise HTTPException(400, "Cannot modify comments in an archived group")
 
     member = require_member(db, post.group_id, me.id)
 

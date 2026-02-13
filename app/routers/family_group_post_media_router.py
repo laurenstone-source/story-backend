@@ -45,13 +45,6 @@ def _detect_media_type(file: UploadFile) -> str:
     raise HTTPException(400, "Only image/video supported")
 
 
-def _post_media_folder(user_id: str, profile_id: str, group_id: str, post_id: str) -> str:
-    return (
-        f"media/users/{user_id}/profiles/{profile_id}"
-        f"/family-groups/{group_id}/posts/{post_id}/media"
-    )
-
-
 @router.post("/posts/{post_id}/media")
 def upload_post_media(
     post_id: str,
@@ -59,9 +52,8 @@ def upload_post_media(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    from app.storage import save_file, delete_file
 
-    me = get_current_user_profile(db, current_user["sub"])
+    me = get_current_user_profile(db, current_user['sub'])
 
     # -------------------------------------------------
     # Load post

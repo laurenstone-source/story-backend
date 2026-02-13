@@ -9,6 +9,7 @@ from fastapi import UploadFile, File
 import os
 from app.routers.profile_router import attach_media_urls
 from app.utils.urls import absolute_media_url
+from app.database import SessionLocal
 from app.auth.supabase_auth import get_current_user
 from app.models.profile import Profile
 

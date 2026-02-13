@@ -72,10 +72,10 @@ def serialize_comment(
 
         author_name=comment.author.full_name if comment.author else None,
         author_profile_picture=(
-            comment.author.profile_picture.file_path
-            if comment.author and comment.author.profile_picture
+            comment.author.profile_picture_media.file_path
+            if comment.author and getattr(comment.author, "profile_picture_media", None)
             else None
-        ),
+    ),
 
         content_text=comment.content_text,
         status=comment.status,
@@ -129,7 +129,8 @@ def list_comments(
 
     query = (
     db.query(FamilyGroupPostComment)
-    .options(joinedload(FamilyGroupPostComment.media))  # ✅ IMPORTANT
+    .options(joinedload(FamilyGroupPostComment.media))
+    joinedload(FamilyGroupPostComment.author), 
     .filter(
         FamilyGroupPostComment.post_id == post_id,
         FamilyGroupPostComment.status != "hidden_by_system",
