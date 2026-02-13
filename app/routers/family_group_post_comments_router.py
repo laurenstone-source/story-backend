@@ -128,9 +128,11 @@ def list_comments(
     member = require_member(db, post.group_id, me.id)
 
     query = (
-    db.query(FamilyGroupPostComment),
-    .options(joinedload(FamilyGroupPostComment.media))
-    joinedload(FamilyGroupPostComment.author), 
+    db.query(FamilyGroupPostComment)
+    .options(
+        joinedload(FamilyGroupPostComment.media),
+        joinedload(FamilyGroupPostComment.author),
+    )
     .filter(
         FamilyGroupPostComment.post_id == post_id,
         FamilyGroupPostComment.status != "hidden_by_system",
